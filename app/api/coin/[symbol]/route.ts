@@ -28,6 +28,7 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
       const oi = await getOpenInterestHist(symbol, "15m", 4);
       if (oi.length >= 2) {
         const currentOi = parseFloat(oi[oi.length - 1].sumOpenInterest);
+
         const pastOi = parseFloat(oi[0].sumOpenInterest);
         oiChange = ((currentOi - pastOi) / pastOi) * 100;
       }
