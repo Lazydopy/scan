@@ -3,6 +3,7 @@ import { getKlines, getOpenInterestHist, getPremiumIndex } from "@/lib/binance/a
 import { calculateMACD } from "@/lib/indicators/macd";
 import { analyzeCompression, calculateVolumeRatio } from "@/lib/indicators/compression";
 import { analyzeMarketStructure } from "@/lib/market-structure/levels";
+import { analyzeTrendBias } from "@/lib/market-structure/bias";
 import { calculateScores } from "@/lib/scoring/scores";
 
 export const dynamic = "force-dynamic";
@@ -11,16 +12,26 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
   const { symbol: rawSymbol } = await context.params;
   const symbol = rawSymbol.toUpperCase();
   try {
-    const klines = await getKlines(symbol, "15m", 100);
-    if (klines.length < 50) {
+    const [klines5m, klines1h, klines4h] = await Promise.all([
+      getKlines(symbol, "5m", 100),
+      getKlines(symbol, "1h", 150), // Fetch 150 for 1H chart (6.25 days)
+      getKlines(symbol, "4h", 1000)
+    ]);
+
+    if (klines5m.length < 50 || klines1h.length < 50 || klines4h.length < 50) {
       return NextResponse.json({ error: "Insufficient data for symbol" }, { status: 400 });
     }
 
-    const macd = calculateMACD(klines);
-    const currentMacd = macd[macd.length - 1];
-    const compression = analyzeCompression(klines);
-    const volumeRatio = calculateVolumeRatio(klines);
-    const structure = analyzeMarketStructure(klines);
+    const macd5m = calculateMACD(klines5m);
+    const currentMacd5m = macd5m[macd5m.length - 1];
+    const compression = analyzeCompression(klines5m);
+    const volumeRatio = calculateVolumeRatio(klines5m);
+    
+    const structure = analyzeMarketStructure(klines1h);
+    const biasResult = analyzeTrendBias(klines4h);
+
+    // Calculate 1H MACD for the chart visualization
+    const macd1h = calculateMACD(klines1h);
 
     let oiChange = 0;
     let funding = 0;
@@ -39,18 +50,21 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
     }
 
     const { setupScore, pumpScore, status } = calculateScores({
-      macdState: currentMacd.state,
+      macdState: currentMacd5m.state,
       compression,
       volumeRatio,
       structure,
       oiChange,
       funding,
-      klines
+      klines: klines5m,
+      bias: biasResult.bias
     });
 
     return NextResponse.json({
-      klines,
-      macd,
+      klines: klines1h, // Return 1H klines for the chart
+      macd: macd1h,     // Return 1H macd for the chart
+      macdState: currentMacd5m.state, // Return 5m MACD state for the text stats
+      currentPrice: klines5m[klines5m.length - 1].close,
       compression,
       volumeRatio,
       structure,
@@ -58,7 +72,8 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
       funding,
       setupScore,
       pumpScore,
-      status
+      status,
+      trendBias: biasResult.bias
     });
 
   } catch (error) {

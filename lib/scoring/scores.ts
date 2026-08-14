@@ -11,6 +11,7 @@ type ScoringInput = {
   oiChange: number; // percentage
   funding: number; // percentage
   klines: Kline[];
+  bias?: "BULLISH" | "BEARISH" | "NEUTRAL";
 };
 
 export function calculateScores(input: ScoringInput) {
@@ -20,6 +21,15 @@ export function calculateScores(input: ScoringInput) {
   // 1. Price Compression (Max 15)
   setupScore += (input.compression.score / 100) * 15;
   pumpScore += (input.compression.score / 100) * 20; // Compression is very important for pre-pump
+
+  // 1.5 MTF Trend Bias (Max 15 for BULLISH, penalty for BEARISH)
+  if (input.bias === "BULLISH") {
+    setupScore += 15;
+    pumpScore += 10;
+  } else if (input.bias === "BEARISH") {
+    setupScore -= 10;
+    pumpScore -= 10;
+  }
 
   // 2. Volume Expansion (Max 15)
   if (input.volumeRatio > 1.2 && input.volumeRatio <= 2) {

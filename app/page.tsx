@@ -12,6 +12,7 @@ export default function Home() {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [filterStrategy, setFilterStrategy] = useState<"ALL" | "MACD" | "SUPPORT">("ALL");
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +123,37 @@ export default function Home() {
               <h2 className="text-[13px] font-bold text-foreground">Recent Signals <span className="text-muted-foreground font-normal ml-1">({candidates.length} found)</span></h2>
               <span className="text-[11px] font-semibold text-muted-foreground">Sort <span className="ml-1">▼</span></span>
             </div>
-            {candidates.map((c, index) => (
+
+            {/* Filter Tabs */}
+            <div className="flex gap-2 mb-2 bg-muted/30 p-1 rounded-xl">
+              <button 
+                onClick={() => setFilterStrategy("ALL")}
+                className={`flex-1 text-[11px] font-bold py-1.5 rounded-lg transition-all ${filterStrategy === "ALL" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                All
+              </button>
+              <button 
+                onClick={() => setFilterStrategy("MACD")}
+                className={`flex-1 text-[11px] font-bold py-1.5 rounded-lg transition-all ${filterStrategy === "MACD" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                MACD Setup
+              </button>
+              <button 
+                onClick={() => setFilterStrategy("SUPPORT")}
+                className={`flex-1 text-[11px] font-bold py-1.5 rounded-lg transition-all ${filterStrategy === "SUPPORT" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                At Support
+              </button>
+            </div>
+
+            {candidates
+              .filter(c => {
+                if (filterStrategy === "ALL") return true;
+                if (filterStrategy === "MACD") return c.macdState !== "RED_FALLING";
+                if (filterStrategy === "SUPPORT") return c.distanceToSupport < 2;
+                return true;
+              })
+              .map((c, index) => (
               <CandidateCard 
                 key={c.symbol} 
                 candidate={c} 
@@ -130,6 +161,17 @@ export default function Home() {
                 onSelect={(symbol) => setSelectedSymbol(symbol)}
               />
             ))}
+            
+            {candidates.filter(c => {
+                if (filterStrategy === "ALL") return true;
+                if (filterStrategy === "MACD") return c.macdState !== "RED_FALLING";
+                if (filterStrategy === "SUPPORT") return c.distanceToSupport < 2;
+                return true;
+              }).length === 0 && (
+                <div className="text-center py-8 text-muted-foreground text-xs font-medium">
+                  No coins match this filter.
+                </div>
+            )}
           </section>
         )}
       </main>

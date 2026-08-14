@@ -3,6 +3,7 @@ import { getExchangeInfo, get24hTickers, getKlines, getOpenInterestHist, getPrem
 import { calculateMACD } from "@/lib/indicators/macd";
 import { analyzeCompression, calculateVolumeRatio } from "@/lib/indicators/compression";
 import { analyzeMarketStructure } from "@/lib/market-structure/levels";
+import { analyzeTrendBias } from "@/lib/market-structure/bias";
 import { calculateScores } from "@/lib/scoring/scores";
 import pLimit from "p-limit";
 import { createClient } from "@supabase/supabase-js";
@@ -28,8 +29,7 @@ export async function POST() {
     const tickers = await get24hTickers();
     const usdtTickers = tickers
       .filter(t => symbols.includes(t.symbol))
-      .sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
-      .slice(0, 100);
+      .sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
 
     const candidateSymbols = usdtTickers.map(t => t.symbol);
 
@@ -40,19 +40,36 @@ export async function POST() {
     const klinePromises = candidateSymbols.map(symbol => 
       limit(async () => {
         try {
-          const klines = await getKlines(symbol, "15m", 100); // Need ~100 for proper EMA seeding
-          if (klines.length < 50) return null;
+          const [klines5m, klines1h, klines4h] = await Promise.all([
+            getKlines(symbol, "5m", 100),
+            getKlines(symbol, "1h", 100),
+            getKlines(symbol, "4h", 1000)
+          ]);
+          
+          if (klines5m.length < 50 || klines1h.length < 50 || klines4h.length < 50) return null;
           
           // Use closed candles mostly, remove the last one if it's not closed
           // For simplicity we just use all returned
-          const macd = calculateMACD(klines);
+          const macd = calculateMACD(klines5m);
           const currentMacd = macd[macd.length - 1];
-          const compression = analyzeCompression(klines);
-          const volRatio = calculateVolumeRatio(klines);
-          const structure = analyzeMarketStructure(klines);
+          const compression = analyzeCompression(klines5m);
+          const volRatio = calculateVolumeRatio(klines5m);
+          
+          // Use 1h for structure
+          const structure = analyzeMarketStructure(klines1h);
+          
+          // Use 4h for bias
+          const biasResult = analyzeTrendBias(klines4h);
 
-          // Fast preliminary filter: if MACD is RED_FALLING, skip expensive OI/Funding fetch
-          if (currentMacd.state === "RED_FALLING" || structure.distanceToResistance > 15) {
+          // Fast preliminary filter: skip if 4H Bias is BEARISH to enforce MTF trend alignment
+          // We can soften this to allow NEUTRAL, but strictly filter BEARISH out.
+          if (biasResult.bias === "BEARISH") {
+            return null;
+          }
+
+          // Skip if MACD is RED_FALLING AND it's not at support
+          const isAtSupport = structure.distanceToSupport < 2;
+          if (!isAtSupport && (currentMacd.state === "RED_FALLING" || structure.distanceToResistance > 15)) {
             return null;
           }
 
@@ -79,16 +96,17 @@ export async function POST() {
             structure,
             oiChange,
             funding,
-            klines
+            klines: klines5m,
+            bias: biasResult.bias
           });
 
-          const currentPrice = klines[klines.length - 1].close;
-          const change15m = ((currentPrice - klines[klines.length - 2].close) / klines[klines.length - 2].close) * 100;
+          const currentPrice = klines5m[klines5m.length - 1].close;
+          const change5m = ((currentPrice - klines5m[klines5m.length - 2].close) / klines5m[klines5m.length - 2].close) * 100;
 
           return {
             symbol,
             price: currentPrice,
-            change15m,
+            change5m,
             macdState: currentMacd.state,
             macdVal: currentMacd.macd,
             macdSignal: currentMacd.signal,
@@ -99,6 +117,7 @@ export async function POST() {
             setupScore,
             pumpScore,
             status,
+            trendBias: biasResult.bias,
             ...structure
           };
 
@@ -117,7 +136,7 @@ export async function POST() {
       return b!.pumpScore - a!.pumpScore;
     });
 
-    const topResults = scannedCandidates.slice(0, 30);
+    const topResults = scannedCandidates.slice(0, 100);
     const durationMs = Date.now() - startTime;
 
     // Save to Supabase (non-blocking if possible, or await it)
@@ -137,7 +156,7 @@ export async function POST() {
             scan_run_id: runData.id,
             symbol: r!.symbol,
             price: r!.price,
-            change_15m: r!.change15m,
+            change_15m: r!.change5m, // We keep the column name as is in DB but it's 5m data now
             volume_ratio: r!.volRatio,
             oi_change: r!.oiChange,
             funding: r!.funding,

@@ -8,6 +8,7 @@ export type MarketStructure = {
   target1: number;
   target2: number;
   distanceToResistance: number;
+  distanceToSupport: number;
 };
 
 export function analyzeMarketStructure(klines: Kline[]): MarketStructure {
@@ -20,7 +21,8 @@ export function analyzeMarketStructure(klines: Kline[]): MarketStructure {
       invalidation: currentPrice,
       target1: currentPrice,
       target2: currentPrice,
-      distanceToResistance: 0
+      distanceToResistance: 0,
+      distanceToSupport: 0
     };
   }
 
@@ -40,6 +42,7 @@ export function analyzeMarketStructure(klines: Kline[]): MarketStructure {
   const support = localLow;
   
   const distanceToResistance = ((resistance - currentPrice) / currentPrice) * 100;
+  const distanceToSupport = ((currentPrice - support) / currentPrice) * 100;
   
   // Trigger is just slightly above resistance
   const breakoutTrigger = resistance * 1.002; 
@@ -58,6 +61,7 @@ export function analyzeMarketStructure(klines: Kline[]): MarketStructure {
     invalidation,
     target1,
     target2,
-    distanceToResistance
+    distanceToResistance,
+    distanceToSupport
   };
 }

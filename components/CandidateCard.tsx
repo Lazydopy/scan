@@ -5,7 +5,8 @@ import { ChevronRight, TrendingUp, TrendingDown, Minus } from "lucide-react";
 type Candidate = {
   symbol: string;
   price: number;
-  change15m: number;
+  change5m?: number;
+  change15m?: number;
   setupScore: number;
   pumpScore: number;
   macdState: string;
@@ -14,6 +15,8 @@ type Candidate = {
   status: string;
   resistance: number;
   breakoutTrigger: number;
+  distanceToSupport: number;
+  trendBias?: string;
 };
 
 type CandidateCardProps = {
@@ -68,14 +71,28 @@ export default function CandidateCard({ candidate, rank, onSelect }: CandidateCa
             <div className={`flex items-center text-[9px] px-1 py-0.5 rounded font-medium ${getStatusColor(candidate.status)}`}>
               {candidate.status.replace(/[^a-zA-Z-\s]/g, "").trim()}
             </div>
+            {candidate.distanceToSupport < 2 && (
+              <div className="flex items-center text-[9px] px-1 py-0.5 rounded font-medium text-blue-600 bg-blue-50 border border-blue-200">
+                At Support
+              </div>
+            )}
+            {candidate.trendBias && (
+              <div className={`flex items-center text-[9px] px-1 py-0.5 rounded font-medium ${
+                candidate.trendBias === "BULLISH" ? "text-green-600 bg-green-50 border border-green-200" :
+                candidate.trendBias === "BEARISH" ? "text-red-600 bg-red-50 border border-red-200" :
+                "text-gray-600 bg-gray-50 border border-gray-200"
+              }`}>
+                {candidate.trendBias} 4H
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       <div className="flex flex-col items-end">
         <div className="font-bold text-[15px] text-foreground mb-1">${formatPrice(candidate.price)}</div>
-        <div className={`text-[11px] font-semibold flex items-center ${candidate.change15m >= 0 ? "text-success" : "text-error"}`}>
-          {candidate.change15m > 0 ? "+" : ""}{candidate.change15m.toFixed(2)}%
+        <div className={`text-[11px] font-semibold flex items-center ${(candidate.change5m ?? candidate.change15m ?? 0) >= 0 ? "text-success" : "text-error"}`}>
+          {(candidate.change5m ?? candidate.change15m ?? 0) > 0 ? "+" : ""}{(candidate.change5m ?? candidate.change15m ?? 0).toFixed(2)}%
         </div>
       </div>
     </div>

@@ -103,7 +103,7 @@ export default function CoinModal({ symbol, onClose }: CoinModalProps) {
                 </div>
                 
                 <div className="text-[32px] font-bold text-foreground mt-2">
-                  ${formatPrice(data.klines[data.klines.length - 1].close)}
+                  ${formatPrice(data.currentPrice)}
                 </div>
                 
                 <div className="flex items-center justify-center gap-2 mt-1">
@@ -140,8 +140,8 @@ export default function CoinModal({ symbol, onClose }: CoinModalProps) {
                     <div className="text-sm font-bold text-primary">{data.pumpScore} / 100</div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-muted-foreground mb-1">MACD State</div>
-                    <div className="text-sm font-semibold text-foreground">{data.macd[data.macd.length - 1].state.replace("_", " ")}</div>
+                    <div className="text-[11px] text-muted-foreground mb-1">MACD State (5m)</div>
+                    <div className="text-sm font-semibold text-foreground">{data.macdState.replace("_", " ")}</div>
                   </div>
                   <div>
                     <div className="text-[11px] text-muted-foreground mb-1">Vol Ratio</div>
