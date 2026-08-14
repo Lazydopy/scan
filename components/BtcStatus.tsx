@@ -23,22 +23,11 @@ export default function BtcStatus() {
   useEffect(() => {
     const fetchInitial = async () => {
       try {
-        const fetchCoin = async (symbol: string) => {
-          const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=2`);
-          if (!res.ok) throw new Error("Failed");
-          const klines = await res.json();
-          const prev = parseFloat(klines[0][4]);
-          const current = parseFloat(klines[1][4]);
-          const change15m = ((current - prev) / prev) * 100;
-          return { price: current, change15m, change1h: 0, bias: "NEUTRAL" as const };
-        };
-
-        const [btc, eth] = await Promise.all([
-          fetchCoin("BTCUSDT"),
-          fetchCoin("ETHUSDT")
-        ]);
+        const res = await fetch("/api/btc-status");
+        if (!res.ok) throw new Error("Failed");
         
-        setData({ btc, eth });
+        const data = await res.json();
+        setData(data);
       } catch (err) {
         setError(true);
       } finally {

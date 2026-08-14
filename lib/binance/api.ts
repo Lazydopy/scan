@@ -12,7 +12,12 @@ export async function fetchBinance<T>(endpoint: string, params?: Record<string, 
   });
 
   if (!res.ok) {
-    throw new Error(`Binance API Error: ${res.status} ${res.statusText}`);
+    let errorMsg = res.statusText;
+    try {
+      const errorJson = await res.json();
+      if (errorJson && errorJson.msg) errorMsg = errorJson.msg;
+    } catch (e) {}
+    throw new Error(`Binance API Error ${res.status}: ${errorMsg}`);
   }
 
   return res.json();
@@ -61,6 +66,10 @@ export async function getExchangeInfo() {
 
 export async function get24hTickers() {
   return fetchBinance<any[]>("/fapi/v1/ticker/24hr");
+}
+
+export async function get24hTicker(symbol: string) {
+  return fetchBinance<any>("/fapi/v1/ticker/24hr", { symbol });
 }
 
 export async function getOpenInterestHist(symbol: string, period: string, limit: number = 30) {

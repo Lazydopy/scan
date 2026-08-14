@@ -11,7 +11,9 @@ type ScoringInput = {
   oiChange: number; // percentage
   funding: number; // percentage
   klines: Kline[];
+  klines1h?: Kline[];
   bias?: "BULLISH" | "BEARISH" | "NEUTRAL";
+  gain24h?: number;
 };
 
 export function calculateScores(input: ScoringInput) {
@@ -29,6 +31,37 @@ export function calculateScores(input: ScoringInput) {
   } else if (input.bias === "BEARISH") {
     setupScore -= 10;
     pumpScore -= 10;
+  }
+
+  // 1.8 Momentum Multiplier (Max 15)
+  if (input.gain24h !== undefined) {
+    if (input.gain24h > 10 && input.gain24h <= 20) {
+      setupScore += 10;
+      pumpScore += 10;
+    } else if (input.gain24h > 20) {
+      setupScore += 15;
+      pumpScore += 15;
+    }
+  }
+
+  // 1.9 Pullback Depth "Golden Zone"
+  if (input.klines1h && input.klines1h.length > 0) {
+    let maxHigh = 0;
+    input.klines1h.slice(-100).forEach(k => {
+      if (k.high > maxHigh) maxHigh = k.high;
+    });
+    const currentPrice = input.klines1h[input.klines1h.length - 1].close;
+    const pullback = ((maxHigh - currentPrice) / maxHigh) * 100;
+
+    if (pullback > 5 && pullback <= 15) {
+      setupScore += 10;
+      pumpScore += 10; // Golden zone
+    } else if (pullback > 20) {
+      setupScore -= 10;
+      pumpScore -= 10; // Dumped too hard
+    } else if (pullback < 3) {
+      setupScore -= 5; // Not pulled back enough
+    }
   }
 
   // 2. Volume Expansion (Max 15)
@@ -56,6 +89,12 @@ export function calculateScores(input: ScoringInput) {
   } else if (input.oiChange > 5) {
     setupScore += 20;
     pumpScore += 15;
+  }
+
+  // OI Accumulation at Support (Divergence)
+  if (input.oiChange > 0 && input.structure.distanceToSupport < 2) {
+    pumpScore += 10;
+    setupScore += 5;
   }
 
   // 5. Funding (Max 5)
@@ -94,9 +133,20 @@ export function calculateScores(input: ScoringInput) {
   const oldPrice = input.klines[0].open;
   const totalChange = ((currentPrice - oldPrice) / oldPrice) * 100;
   
-  if (totalChange > 20 || hasPumped) {
+  // Only penalize as EXTENDED if it hasn't pulled back enough from its recent high
+  let isOverextended = false;
+  if (input.klines1h && input.klines1h.length > 0) {
+    let maxHigh = 0;
+    input.klines1h.slice(-100).forEach(k => { if (k.high > maxHigh) maxHigh = k.high; });
+    const pullback = ((maxHigh - currentPrice) / maxHigh) * 100;
+    if (totalChange > 20 && pullback < 3) isOverextended = true;
+  } else {
+    if (totalChange > 20) isOverextended = true;
+  }
+  
+  if (isOverextended || hasPumped) {
     status = "⚠️ EXTENDED";
-    pumpScore -= 40; // heavily penalize for pre-pump strategy
+    pumpScore -= 40; // heavily penalize for chasing pumps
   } else if (setupScore > 70 && pumpScore > 75) {
     status = "🟢 PRE-BREAKOUT";
   } else if (input.macdState === "RED_FALLING") {

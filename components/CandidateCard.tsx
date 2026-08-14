@@ -7,6 +7,7 @@ type Candidate = {
   price: number;
   change5m?: number;
   change15m?: number;
+  gain24h?: number;
   setupScore: number;
   pumpScore: number;
   macdState: string;
@@ -94,6 +95,11 @@ export default function CandidateCard({ candidate, rank, onSelect }: CandidateCa
         <div className={`text-[11px] font-semibold flex items-center ${(candidate.change5m ?? candidate.change15m ?? 0) >= 0 ? "text-success" : "text-error"}`}>
           {(candidate.change5m ?? candidate.change15m ?? 0) > 0 ? "+" : ""}{(candidate.change5m ?? candidate.change15m ?? 0).toFixed(2)}%
         </div>
+        {candidate.gain24h !== undefined && (
+          <div className="text-[10px] text-muted-foreground mt-0.5">
+            24h: <span className={candidate.gain24h >= 0 ? "text-success" : "text-error"}>{candidate.gain24h > 0 ? "+" : ""}{candidate.gain24h.toFixed(1)}%</span>
+          </div>
+        )}
       </div>
     </div>
   );

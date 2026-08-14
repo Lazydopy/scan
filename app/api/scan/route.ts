@@ -31,6 +31,9 @@ export async function POST() {
       .filter(t => symbols.includes(t.symbol))
       .sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
 
+    const gainMap = new Map<string, number>();
+    usdtTickers.forEach(t => gainMap.set(t.symbol, parseFloat(t.priceChangePercent)));
+
     const candidateSymbols = usdtTickers.map(t => t.symbol);
 
     // 3. Fetch Klines concurrently but rate limited
@@ -97,7 +100,9 @@ export async function POST() {
             oiChange,
             funding,
             klines: klines5m,
-            bias: biasResult.bias
+            klines1h,
+            bias: biasResult.bias,
+            gain24h: gainMap.get(symbol) || 0
           });
 
           const currentPrice = klines5m[klines5m.length - 1].close;
@@ -118,6 +123,7 @@ export async function POST() {
             pumpScore,
             status,
             trendBias: biasResult.bias,
+            gain24h: gainMap.get(symbol) || 0,
             ...structure
           };
 

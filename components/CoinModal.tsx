@@ -150,6 +150,29 @@ export default function CoinModal({ symbol, onClose }: CoinModalProps) {
                 </div>
               </div>
 
+              {/* Trade Setup */}
+              <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm mb-6">
+                <h3 className="text-sm font-semibold mb-4 text-foreground/80">Trade Setup</h3>
+                <div className="grid grid-cols-2 gap-y-4">
+                  <div>
+                    <div className="text-[11px] text-muted-foreground mb-1">Watchout Area (Entry)</div>
+                    <div className="text-sm font-bold text-success">${formatPrice(data.structure.support)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-muted-foreground mb-1">Stop Loss (Invalidation)</div>
+                    <div className="text-sm font-bold text-error">${formatPrice(data.structure.invalidation)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-muted-foreground mb-1">Resistance (Target 1)</div>
+                    <div className="text-sm font-semibold text-foreground">${formatPrice(data.structure.resistance)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-muted-foreground mb-1">Breakout Trigger</div>
+                    <div className="text-sm font-semibold text-primary">${formatPrice(data.structure.breakoutTrigger)}</div>
+                  </div>
+                </div>
+              </div>
+
             </div>
           )}
         </div>

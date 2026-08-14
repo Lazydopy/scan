@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getKlines, getOpenInterestHist, getPremiumIndex } from "@/lib/binance/api";
+import { getKlines, getOpenInterestHist, getPremiumIndex, get24hTicker } from "@/lib/binance/api";
 import { calculateMACD } from "@/lib/indicators/macd";
 import { analyzeCompression, calculateVolumeRatio } from "@/lib/indicators/compression";
 import { analyzeMarketStructure } from "@/lib/market-structure/levels";
@@ -12,10 +12,11 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
   const { symbol: rawSymbol } = await context.params;
   const symbol = rawSymbol.toUpperCase();
   try {
-    const [klines5m, klines1h, klines4h] = await Promise.all([
+    const [klines5m, klines1h, klines4h, ticker24h] = await Promise.all([
       getKlines(symbol, "5m", 100),
       getKlines(symbol, "1h", 150), // Fetch 150 for 1H chart (6.25 days)
-      getKlines(symbol, "4h", 1000)
+      getKlines(symbol, "4h", 1000),
+      get24hTicker(symbol).catch(() => null)
     ]);
 
     if (klines5m.length < 50 || klines1h.length < 50 || klines4h.length < 50) {
@@ -57,7 +58,9 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
       oiChange,
       funding,
       klines: klines5m,
-      bias: biasResult.bias
+      klines1h: klines1h,
+      bias: biasResult.bias,
+      gain24h: ticker24h ? parseFloat(ticker24h.priceChangePercent) : 0
     });
 
     return NextResponse.json({
@@ -73,7 +76,8 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
       setupScore,
       pumpScore,
       status,
-      trendBias: biasResult.bias
+      trendBias: biasResult.bias,
+      gain24h: ticker24h ? parseFloat(ticker24h.priceChangePercent) : 0
     });
 
   } catch (error) {
