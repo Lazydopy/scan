@@ -18,6 +18,7 @@ type Candidate = {
   breakoutTrigger: number;
   distanceToSupport: number;
   trendBias?: string;
+  pullback?: number;
 };
 
 type CandidateCardProps = {
@@ -84,6 +85,11 @@ export default function CandidateCard({ candidate, rank, onSelect }: CandidateCa
                 "text-gray-600 bg-gray-50 border border-gray-200"
               }`}>
                 {candidate.trendBias} 4H
+              </div>
+            )}
+            {candidate.pullback !== undefined && candidate.pullback > 3 && (
+              <div className="flex items-center text-[9px] px-1 py-0.5 rounded font-medium text-purple-600 bg-purple-50 border border-purple-200">
+                PB: -{candidate.pullback.toFixed(1)}%
               </div>
             )}
           </div>

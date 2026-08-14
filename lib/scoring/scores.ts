@@ -44,23 +44,31 @@ export function calculateScores(input: ScoringInput) {
     }
   }
 
-  // 1.9 Pullback Depth "Golden Zone"
+  let pullback = 0;
+  let goldenPocket = { top: 0, bottom: 0 };
   if (input.klines1h && input.klines1h.length > 0) {
     let maxHigh = 0;
     input.klines1h.slice(-100).forEach(k => {
       if (k.high > maxHigh) maxHigh = k.high;
     });
     const currentPrice = input.klines1h[input.klines1h.length - 1].close;
-    const pullback = ((maxHigh - currentPrice) / maxHigh) * 100;
+    pullback = ((maxHigh - currentPrice) / maxHigh) * 100;
+    
+    // Dynamic Golden Pocket based on Volume Bidding Area (Support)
+    goldenPocket = {
+      top: input.structure.support * 1.03, // 3% buffer above volume support where bids start
+      bottom: input.structure.support      // Exact volume support floor
+    };
 
-    if (pullback > 5 && pullback <= 15) {
-      setupScore += 10;
-      pumpScore += 10; // Golden zone
-    } else if (pullback > 20) {
+    // Evaluate pullback against the dynamic volume/bidding zone rather than hardcoded percentages
+    if (input.structure.distanceToSupport >= 0 && input.structure.distanceToSupport <= 3) {
+      setupScore += 15;
+      pumpScore += 15; // Perfectly inside the dynamic bidding zone (Golden Pocket)
+    } else if (input.structure.distanceToSupport < 0) {
       setupScore -= 10;
-      pumpScore -= 10; // Dumped too hard
-    } else if (pullback < 3) {
-      setupScore -= 5; // Not pulled back enough
+      pumpScore -= 10; // Dumped completely through the bidding area
+    } else if (input.structure.distanceToSupport > 3) {
+      if (pullback < 3) setupScore -= 5; // Hasn't pulled back enough into the volume zone yet
     }
   }
 
@@ -156,6 +164,8 @@ export function calculateScores(input: ScoringInput) {
   return {
     setupScore: Math.min(100, Math.max(0, Math.round(setupScore))),
     pumpScore: Math.min(100, Math.max(0, Math.round(pumpScore))),
-    status
+    status,
+    pullback,
+    goldenPocket
   };
 }

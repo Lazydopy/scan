@@ -92,7 +92,7 @@ export async function POST() {
             // Ignore missing OI/funding gracefully
           }
 
-          const { setupScore, pumpScore, status } = calculateScores({
+          const { setupScore, pumpScore, status, pullback, goldenPocket } = calculateScores({
             macdState: currentMacd.state,
             compression,
             volumeRatio: volRatio,
@@ -122,6 +122,8 @@ export async function POST() {
             setupScore,
             pumpScore,
             status,
+            pullback,
+            goldenPocket,
             trendBias: biasResult.bias,
             gain24h: gainMap.get(symbol) || 0,
             ...structure

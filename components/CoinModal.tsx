@@ -136,6 +136,10 @@ export default function CoinModal({ symbol, onClose }: CoinModalProps) {
                     <div className="text-sm font-bold text-foreground">{data.setupScore} / 100</div>
                   </div>
                   <div>
+                    <div className="text-[11px] text-muted-foreground mb-1">Pullback Depth</div>
+                    <div className="text-sm font-bold text-foreground">-{data.pullback?.toFixed(2)}%</div>
+                  </div>
+                  <div>
                     <div className="text-[11px] text-muted-foreground mb-1">Pump Score</div>
                     <div className="text-sm font-bold text-primary">{data.pumpScore} / 100</div>
                   </div>
@@ -161,6 +165,12 @@ export default function CoinModal({ symbol, onClose }: CoinModalProps) {
                   <div>
                     <div className="text-[11px] text-muted-foreground mb-1">Stop Loss (Invalidation)</div>
                     <div className="text-sm font-bold text-error">${formatPrice(data.structure.invalidation)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-muted-foreground mb-1">Golden Pocket Area</div>
+                    <div className="text-sm font-bold text-warning">
+                      ${formatPrice(data.goldenPocket?.bottom)} - ${formatPrice(data.goldenPocket?.top)}
+                    </div>
                   </div>
                   <div>
                     <div className="text-[11px] text-muted-foreground mb-1">Resistance (Target 1)</div>

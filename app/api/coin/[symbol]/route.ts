@@ -50,7 +50,7 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
       // ignore
     }
 
-    const { setupScore, pumpScore, status } = calculateScores({
+    const { setupScore, pumpScore, status, pullback, goldenPocket } = calculateScores({
       macdState: currentMacd5m.state,
       compression,
       volumeRatio,
@@ -76,6 +76,8 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
       setupScore,
       pumpScore,
       status,
+      pullback,
+      goldenPocket,
       trendBias: biasResult.bias,
       gain24h: ticker24h ? parseFloat(ticker24h.priceChangePercent) : 0
     });
