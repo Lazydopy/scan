@@ -1,69 +1,162 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import BtcStatus from "@/components/BtcStatus";
+import CandidateCard from "@/components/CandidateCard";
+import CoinModal from "@/components/CoinModal";
+import { Search, Loader2 } from "lucide-react";
 
 export default function Home() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isScanning, setIsScanning] = useState(false);
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [error, setError] = useState("");
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    let symbol = searchQuery.trim().toUpperCase();
+    if (!symbol) return;
+    if (!symbol.endsWith("USDT")) {
+      symbol += "USDT";
+    }
+    setSelectedSymbol(symbol);
+  };
+
+  const handleScan = async () => {
+    if (isScanning) return;
+    setIsScanning(true);
+    setError("");
+    setCandidates([]);
+    
+    try {
+      const res = await fetch("/api/scan", { method: "POST" });
+      if (!res.ok) throw new Error("Scan request failed.");
+      const data = await res.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      setCandidates(data.candidates || []);
+    } catch (err: any) {
+      setError(err.message || "An error occurred during scan.");
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex flex-col min-h-screen bg-background">
+      {/* Header */}
+      <header className="px-5 pt-10 pb-4 bg-white sticky top-0 z-20">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-xl font-bold text-foreground">Pump Scanner</h1>
+            <p className="text-[11px] text-muted-foreground font-medium mt-0.5">Pre-Breakout Engine</p>
+          </div>
+          <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold">
+            P
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        {/* Search */}
+        <form onSubmit={handleSearch} className="relative">
+          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+            <Search size={16} className="text-muted-foreground" />
+          </div>
+          <input
+            type="text"
+            className="w-full bg-[#f3f4f6] border-none rounded-xl py-3.5 pl-11 pr-24 text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:text-muted-foreground/70"
+            placeholder="Search symbol (e.g. BTC)"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <button 
+            type="submit" 
+            className="absolute right-2 top-1.5 bottom-1.5 bg-primary text-white px-4 rounded-lg text-[11px] font-bold transition-all active:scale-95"
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+            Check
+          </button>
+        </form>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-1 px-5 pb-24 flex flex-col gap-6 relative z-10 pt-4">
+        <section>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-[13px] font-bold text-foreground">Market Stock</h2>
+          </div>
+          <BtcStatus />
+        </section>
+
+        {candidates.length === 0 && !isScanning && !error && (
+          <section className="flex-1 flex flex-col justify-center items-center mt-4 opacity-50">
+            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+              <Search size={24} className="text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium text-muted-foreground">No recent signals</p>
+          </section>
+        )}
+
+        {isScanning && (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <Loader2 size={32} className="animate-spin text-primary" />
+            <div className="text-xs font-bold text-primary tracking-widest uppercase">Fetching Signals...</div>
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-error/10 text-error p-4 rounded-2xl border border-error/20 text-center mx-5">
+            <h3 className="font-bold text-sm mb-1">Scan Failed</h3>
+            <p className="text-xs font-medium">{error}</p>
+            <button 
+              onClick={() => setError("")}
+              className="mt-3 bg-error text-white px-4 py-1.5 rounded-lg font-bold text-xs"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {candidates.length > 0 && !isScanning && (
+          <section className="flex flex-col gap-3">
+            <div className="flex justify-between items-center mb-1">
+              <h2 className="text-[13px] font-bold text-foreground">Recent Signals <span className="text-muted-foreground font-normal ml-1">({candidates.length} found)</span></h2>
+              <span className="text-[11px] font-semibold text-muted-foreground">Sort <span className="ml-1">▼</span></span>
+            </div>
+            {candidates.map((c, index) => (
+              <CandidateCard 
+                key={c.symbol} 
+                candidate={c} 
+                rank={index + 1} 
+                onSelect={(symbol) => setSelectedSymbol(symbol)}
+              />
+            ))}
+          </section>
+        )}
       </main>
+
+      {/* Floating Scan Button */}
+      {!isScanning && (
+        <div className="fixed bottom-6 left-0 right-0 flex justify-center z-30 pointer-events-none">
+          <button
+            onClick={handleScan}
+            className="pointer-events-auto bg-primary text-white shadow-[0_8px_20px_rgba(59,130,246,0.3)] hover:bg-primary-hover active:scale-95 transition-all flex items-center gap-2 px-6 py-3.5 rounded-full"
+          >
+            <Search size={16} strokeWidth={3} />
+            <span className="font-bold text-[13px]">Scan Market</span>
+          </button>
+        </div>
+      )}
+
+      {/* Coin Details Modal */}
+      {selectedSymbol && (
+        <CoinModal 
+          symbol={selectedSymbol} 
+          onClose={() => setSelectedSymbol(null)} 
+        />
+      )}
     </div>
   );
 }
