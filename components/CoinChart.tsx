@@ -69,11 +69,11 @@ export default function CoinChart({ klines, macd, support, resistance, trigger }
 
     // Main Candle Series
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: "#22c55e",
-      downColor: "#ef4444",
+      upColor: "#6b7280",
+      downColor: "#111827",
       borderVisible: false,
-      wickUpColor: "#22c55e",
-      wickDownColor: "#ef4444",
+      wickUpColor: "#6b7280",
+      wickDownColor: "#111827",
       priceFormat: {
         type: "price",
         precision: precision,
@@ -93,24 +93,24 @@ export default function CoinChart({ klines, macd, support, resistance, trigger }
     // Add support / resistance lines
     candleSeries.createPriceLine({
       price: support,
-      color: "#3b82f6",
-      lineWidth: 2,
+      color: "#111827",
+      lineWidth: 1,
       lineStyle: 2,
       title: "Support",
     });
 
     candleSeries.createPriceLine({
       price: resistance,
-      color: "#f59e0b",
-      lineWidth: 2,
+      color: "#111827",
+      lineWidth: 1,
       lineStyle: 0,
       title: "Resistance",
     });
 
     candleSeries.createPriceLine({
       price: trigger,
-      color: "#22c55e",
-      lineWidth: 2,
+      color: "#6b7280",
+      lineWidth: 1,
       lineStyle: 1,
       title: "Trigger",
     });
@@ -135,7 +135,7 @@ export default function CoinChart({ klines, macd, support, resistance, trigger }
         return {
           time: (viewKlines[i].closeTime / 1000) as any,
           value: m.histogram,
-          color: isGreen ? "rgba(34, 197, 94, 0.5)" : "rgba(239, 68, 68, 0.5)",
+          color: isGreen ? "rgba(107, 114, 128, 0.5)" : "rgba(17, 24, 39, 0.5)",
         };
       })
       .filter(d => d.value !== null && !isNaN(d.value as any));
