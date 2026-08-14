@@ -31,8 +31,8 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
     const structure = analyzeMarketStructure(klines1h);
     const biasResult = analyzeTrendBias(klines4h);
 
-    // Calculate 1H MACD for the chart visualization
-    const macd1h = calculateMACD(klines1h);
+    // Calculate 4H MACD for the chart visualization
+    const macd4h = calculateMACD(klines4h);
 
     let oiChange = 0;
     let funding = 0;
@@ -64,8 +64,8 @@ export async function GET(request: Request, context: { params: Promise<{ symbol:
     });
 
     return NextResponse.json({
-      klines: klines1h, // Return 1H klines for the chart
-      macd: macd1h,     // Return 1H macd for the chart
+      klines: klines4h, // Return 4H klines for the chart
+      macd: macd4h,     // Return 4H macd for the chart
       macdState: currentMacd5m.state, // Return 5m MACD state for the text stats
       currentPrice: klines5m[klines5m.length - 1].close,
       compression,
