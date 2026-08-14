@@ -12,7 +12,7 @@ export default function Home() {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
-  const [filterStrategy, setFilterStrategy] = useState<"ALL" | "MACD" | "SUPPORT">("ALL");
+  const [filterStrategy, setFilterStrategy] = useState<"ALL" | "PRE-BREAKOUT" | "WATCH">("ALL");
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,24 +133,24 @@ export default function Home() {
                 All
               </button>
               <button 
-                onClick={() => setFilterStrategy("MACD")}
-                className={`flex-1 text-[11px] font-bold py-1.5 rounded-lg transition-all ${filterStrategy === "MACD" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setFilterStrategy("PRE-BREAKOUT")}
+                className={`flex-1 text-[11px] font-bold py-1.5 rounded-lg transition-all ${filterStrategy === "PRE-BREAKOUT" ? "bg-white shadow-sm text-success" : "text-muted-foreground hover:text-success"}`}
               >
-                MACD Setup
+                Pre-Breakout
               </button>
               <button 
-                onClick={() => setFilterStrategy("SUPPORT")}
-                className={`flex-1 text-[11px] font-bold py-1.5 rounded-lg transition-all ${filterStrategy === "SUPPORT" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setFilterStrategy("WATCH")}
+                className={`flex-1 text-[11px] font-bold py-1.5 rounded-lg transition-all ${filterStrategy === "WATCH" ? "bg-white shadow-sm text-warning" : "text-muted-foreground hover:text-warning"}`}
               >
-                At Support
+                Watch
               </button>
             </div>
 
             {candidates
               .filter(c => {
                 if (filterStrategy === "ALL") return true;
-                if (filterStrategy === "MACD") return c.macdState !== "RED_FALLING";
-                if (filterStrategy === "SUPPORT") return c.distanceToSupport < 2;
+                if (filterStrategy === "PRE-BREAKOUT") return c.status.includes("PRE-BREAKOUT");
+                if (filterStrategy === "WATCH") return c.status.includes("WATCH");
                 return true;
               })
               .map((c, index) => (
@@ -164,8 +164,8 @@ export default function Home() {
             
             {candidates.filter(c => {
                 if (filterStrategy === "ALL") return true;
-                if (filterStrategy === "MACD") return c.macdState !== "RED_FALLING";
-                if (filterStrategy === "SUPPORT") return c.distanceToSupport < 2;
+                if (filterStrategy === "PRE-BREAKOUT") return c.status.includes("PRE-BREAKOUT");
+                if (filterStrategy === "WATCH") return c.status.includes("WATCH");
                 return true;
               }).length === 0 && (
                 <div className="text-center py-8 text-muted-foreground text-xs font-medium">
