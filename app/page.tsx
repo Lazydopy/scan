@@ -55,9 +55,6 @@ export default function Home() {
             <h1 className="text-xl font-bold text-foreground">Pump Scanner</h1>
             <p className="text-[11px] text-muted-foreground font-medium mt-0.5">Pre-Breakout Engine</p>
           </div>
-          <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold">
-            P
-          </div>
         </div>
 
         {/* Search */}
