@@ -4,15 +4,18 @@ import { useState } from "react";
 import BtcStatus from "@/components/BtcStatus";
 import CandidateCard from "@/components/CandidateCard";
 import CoinModal from "@/components/CoinModal";
-import { Search, Loader2 } from "lucide-react";
+import MarketHeatmap from "@/components/MarketHeatmap";
+import { Search, Loader2, LayoutGrid, ScanLine } from "lucide-react";
 
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [candidates, setCandidates] = useState<any[]>([]);
+  const [marketData, setMarketData] = useState<any>(null);
   const [error, setError] = useState("");
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [filterStrategy, setFilterStrategy] = useState<"ALL" | "PRE-BREAKOUT" | "WATCH">("ALL");
+  const [currentTab, setCurrentTab] = useState<"SCANNER" | "MARKET">("SCANNER");
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,15 +34,21 @@ export default function Home() {
     setCandidates([]);
     
     try {
-      const res = await fetch("/api/scan", { method: "POST" });
-      if (!res.ok) throw new Error("Scan request failed.");
-      const data = await res.json();
+      const [scanRes, marketRes] = await Promise.all([
+        fetch("/api/scan", { method: "POST" }),
+        fetch("/api/market-overview")
+      ]);
       
-      if (data.error) {
-        throw new Error(data.error);
-      }
+      if (!scanRes.ok || !marketRes.ok) throw new Error("Network request failed.");
       
-      setCandidates(data.candidates || []);
+      const scanData = await scanRes.json();
+      const marketJson = await marketRes.json();
+      
+      if (scanData.error) throw new Error(scanData.error);
+      if (marketJson.error) throw new Error(marketJson.error);
+      
+      setCandidates(scanData.candidates || []);
+      setMarketData(marketJson);
     } catch (err: any) {
       setError(err.message || "An error occurred during scan.");
     } finally {
@@ -80,8 +89,28 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 px-5 pb-24 flex flex-col gap-6 relative z-10 pt-4">
-        <section>
+      <main className="flex-1 px-5 pb-32 relative z-10 pt-4">
+        {/* Heatmap Tab */}
+        <div className={currentTab === "MARKET" ? "block" : "hidden"}>
+          {!marketData && !isScanning ? (
+            <div className="flex flex-col justify-center items-center py-20 opacity-50">
+              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                <LayoutGrid size={24} className="text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">Press the scan button to fetch data</p>
+            </div>
+          ) : (
+            <MarketHeatmap 
+              data={marketData} 
+              loading={isScanning} 
+              onSelectCoin={setSelectedSymbol} 
+            />
+          )}
+        </div>
+
+        {/* Scanner Tab */}
+        <div className={currentTab === "SCANNER" ? "flex flex-col gap-6" : "hidden"}>
+          <section>
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-[13px] font-bold text-foreground">Market Stock</h2>
           </div>
@@ -174,20 +203,38 @@ export default function Home() {
             )}
           </section>
         )}
+        </div>
       </main>
 
-      {/* Floating Scan Button */}
-      {!isScanning && (
-        <div className="fixed bottom-6 left-0 right-0 flex justify-center z-30 pointer-events-none">
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-between items-center z-40 pb-safe shadow-[0_-4px_20px_rgb(0,0,0,0.03)]">
+        <button 
+          onClick={() => setCurrentTab("SCANNER")}
+          className={`flex flex-col items-center gap-1 transition-all flex-1 ${currentTab === "SCANNER" ? "text-primary scale-105" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <ScanLine size={22} strokeWidth={currentTab === "SCANNER" ? 2.5 : 2} />
+          <span className="text-[10px] font-bold">Scanner</span>
+        </button>
+
+        {/* Universal Central Refresh Button */}
+        <div className="relative -top-7 flex-shrink-0">
           <button
             onClick={handleScan}
-            className="pointer-events-auto bg-primary text-white shadow-[0_8px_20px_rgba(59,130,246,0.3)] hover:bg-primary-hover active:scale-95 transition-all flex items-center gap-2 px-6 py-3.5 rounded-full"
+            disabled={isScanning}
+            className="bg-primary text-white p-4 rounded-full shadow-[0_8px_20px_rgba(59,130,246,0.4)] hover:bg-primary-hover active:scale-95 transition-all flex items-center justify-center disabled:opacity-80 disabled:scale-95"
           >
-            <Search size={16} strokeWidth={3} />
-            <span className="font-bold text-[13px]">Scan Market</span>
+            {isScanning ? <Loader2 size={24} className="animate-spin" /> : <Search size={24} strokeWidth={3} />}
           </button>
         </div>
-      )}
+
+        <button 
+          onClick={() => setCurrentTab("MARKET")}
+          className={`flex flex-col items-center gap-1 transition-all flex-1 ${currentTab === "MARKET" ? "text-primary scale-105" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <LayoutGrid size={22} strokeWidth={currentTab === "MARKET" ? 2.5 : 2} />
+          <span className="text-[10px] font-bold">Overview</span>
+        </button>
+      </div>
 
       {/* Coin Details Modal */}
       {selectedSymbol && (

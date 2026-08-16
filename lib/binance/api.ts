@@ -7,8 +7,7 @@ export async function fetchBinance<T>(endpoint: string, params?: Record<string, 
   }
   
   const res = await fetch(url.toString(), {
-    // Cache for a short time to avoid rate limits on identical rapid requests
-    next: { revalidate: 10 } 
+    cache: "no-store" // Always fetch fresh data from Binance
   });
 
   if (!res.ok) {
