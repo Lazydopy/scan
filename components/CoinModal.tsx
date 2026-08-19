@@ -164,7 +164,7 @@ export default function CoinModal({ symbol, onClose }: CoinModalProps) {
                   </div>
                   <div>
                     <div className="text-[11px] text-muted-foreground mb-1">Stop Loss (Invalidation)</div>
-                    <div className="text-sm font-bold text-error">${formatPrice(data.structure.invalidation)}</div>
+                    <div className="text-sm font-bold text-error">${formatPrice(data.structure.slForRange ?? data.structure.invalidation)}</div>
                   </div>
                   <div>
                     <div className="text-[11px] text-muted-foreground mb-1">Golden Pocket Area</div>
@@ -180,8 +180,56 @@ export default function CoinModal({ symbol, onClose }: CoinModalProps) {
                     <div className="text-[11px] text-muted-foreground mb-1">Breakout Trigger</div>
                     <div className="text-sm font-semibold text-primary">${formatPrice(data.structure.breakoutTrigger)}</div>
                   </div>
+                  {data.structure.rrRatio > 0 && (
+                    <div>
+                      <div className="text-[11px] text-muted-foreground mb-1">R:R Ratio</div>
+                      <div className={`text-sm font-bold ${data.structure.rrRatio >= 2 ? "text-success" : data.structure.rrRatio >= 1 ? "text-warning" : "text-error"}`}>
+                        1 : {data.structure.rrRatio.toFixed(1)}
+                      </div>
+                    </div>
+                  )}
                 </div>
+
+                {/* Range Map Visual */}
+                {data.structure.isRangeBound && (
+                  <div className="mt-5">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-[11px] font-bold text-foreground/70 uppercase tracking-wider">Range Map</span>
+                      <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                        {data.structure.rangeWidth?.toFixed(1)}% wide
+                      </span>
+                    </div>
+
+                    {/* Range bar */}
+                    <div className="relative h-8 bg-gradient-to-r from-success/20 via-warning/10 to-error/20 rounded-xl overflow-visible border border-gray-100 my-3">
+                      {/* SL zone */}
+                      <div className="absolute left-0 top-0 bottom-0 w-[5%] bg-error/30 rounded-l-xl" />
+                      {/* Entry zone (bottom 20%) */}
+                      <div className="absolute left-[5%] top-0 bottom-0 w-[15%] bg-success/20" />
+                      {/* Top zone (top 20%) */}
+                      <div className="absolute right-0 top-0 bottom-0 w-[20%] bg-error/20 rounded-r-xl" />
+
+                      {/* Current price marker */}
+                      <div
+                        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10"
+                        style={{ left: `${Math.max(3, Math.min(97, data.structure.positionInRange ?? 50))}%` }}
+                      >
+                        <div className="w-3 h-3 rounded-full bg-foreground border-2 border-white shadow-md" />
+                      </div>
+                    </div>
+
+                    {/* Labels */}
+                    <div className="flex justify-between text-[9px] font-bold text-muted-foreground mt-1 px-1">
+                      <span className="text-success">ENTRY ZONE<br />${formatPrice(data.structure.support)}</span>
+                      <span className="text-center text-muted-foreground/60">
+                        {data.structure.positionInRange?.toFixed(0)}% in range
+                      </span>
+                      <span className="text-error text-right">RANGE TOP<br />${formatPrice(data.structure.resistance)}</span>
+                    </div>
+                  </div>
+                )}
               </div>
+
 
             </div>
           )}

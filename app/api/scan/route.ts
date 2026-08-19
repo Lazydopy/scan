@@ -22,7 +22,12 @@ export async function POST() {
     // 1. Get Universe
     const exchangeInfo = await getExchangeInfo();
     const symbols = exchangeInfo.symbols
-      .filter((s: any) => s.quoteAsset === "USDT" && s.contractType === "PERPETUAL" && s.status === "TRADING")
+      .filter((s: any) => 
+        s.quoteAsset === "USDT" && 
+        s.contractType === "PERPETUAL" && 
+        s.status === "TRADING" &&
+        s.underlyingType === "COIN"  // Only crypto — excludes GOLD, SILVER, stocks etc.
+      )
       .map((s: any) => s.symbol);
 
     // 2. Filter by volume to avoid illiquid coins (Top ~100 by volume)

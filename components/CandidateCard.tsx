@@ -19,6 +19,9 @@ type Candidate = {
   distanceToSupport: number;
   trendBias?: string;
   pullback?: number;
+  positionInRange?: number;
+  isRangeBound?: boolean;
+  rangeWidth?: number;
 };
 
 type CandidateCardProps = {
@@ -30,6 +33,9 @@ type CandidateCardProps = {
 export default function CandidateCard({ candidate, rank, onSelect }: CandidateCardProps) {
   const getStatusColor = (status: string) => {
     if (status.includes("PRE-BREAKOUT")) return "text-success border-success/30 bg-success/5";
+    if (status.includes("RANGE-BOTTOM")) return "text-blue-600 border-blue-200 bg-blue-50";
+    if (status.includes("RANGE-TOP"))   return "text-red-500 border-red-200 bg-red-50";
+    if (status.includes("RANGING"))     return "text-gray-500 border-gray-200 bg-gray-50";
     if (status.includes("EXTENDED")) return "text-error border-error/30 bg-error/5";
     if (status.includes("WATCH")) return "text-warning border-warning/30 bg-warning/5";
     if (status.includes("AVOID")) return "text-error border-error/30 bg-error/5";
@@ -90,6 +96,15 @@ export default function CandidateCard({ candidate, rank, onSelect }: CandidateCa
             {candidate.pullback !== undefined && candidate.pullback > 3 && (
               <div className="flex items-center text-[9px] px-1 py-0.5 rounded font-medium text-purple-600 bg-purple-50 border border-purple-200">
                 PB: -{candidate.pullback.toFixed(1)}%
+              </div>
+            )}
+            {candidate.isRangeBound && candidate.positionInRange !== undefined && (
+              <div className={`flex items-center text-[9px] px-1 py-0.5 rounded font-medium ${
+                candidate.positionInRange <= 20 ? 'text-blue-600 bg-blue-50 border border-blue-200' :
+                candidate.positionInRange >= 80 ? 'text-red-500 bg-red-50 border border-red-200' :
+                'text-gray-500 bg-gray-50 border border-gray-200'
+              }`}>
+                {candidate.positionInRange <= 20 ? '📍 Bottom' : candidate.positionInRange >= 80 ? '⛔ Top' : '↔ Mid'} {candidate.positionInRange.toFixed(0)}%
               </div>
             )}
           </div>

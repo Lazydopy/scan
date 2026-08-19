@@ -132,16 +132,13 @@ export function calculateScores(input: ScoringInput) {
   
   for (const k of recent) {
     const candleChange = ((k.close - k.open) / k.open) * 100;
-    if (candleChange > 10) {
-      hasPumped = true;
-    }
+    if (candleChange > 10) hasPumped = true;
   }
   
   const currentPrice = input.klines[input.klines.length - 1].close;
   const oldPrice = input.klines[0].open;
   const totalChange = ((currentPrice - oldPrice) / oldPrice) * 100;
   
-  // Only penalize as EXTENDED if it hasn't pulled back enough from its recent high
   let isOverextended = false;
   if (input.klines1h && input.klines1h.length > 0) {
     let maxHigh = 0;
@@ -151,12 +148,29 @@ export function calculateScores(input: ScoringInput) {
   } else {
     if (totalChange > 20) isOverextended = true;
   }
+
+  // Range-bound detection (takes priority over generic WATCH)
+  const pos = input.structure.positionInRange; // 0=bottom, 100=top
+  const isRange = input.structure.isRangeBound;
+  const rr = input.structure.rrRatio;
   
   if (isOverextended || hasPumped) {
     status = "⚠️ EXTENDED";
-    pumpScore -= 40; // heavily penalize for chasing pumps
+    pumpScore -= 40;
   } else if (setupScore > 70 && pumpScore > 75) {
     status = "🟢 PRE-BREAKOUT";
+  } else if (isRange && pos <= 20 && rr >= 1) {
+    // Bottom of range with decent R:R → prime range entry
+    status = "🔵 RANGE-BOTTOM";
+    pumpScore += 10;
+    setupScore += 10;
+  } else if (isRange && pos >= 80) {
+    // At top of range → wait, don't enter
+    status = "🔴 RANGE-TOP";
+    pumpScore -= 10;
+  } else if (isRange) {
+    // Mid-range → wait for support
+    status = "⚪ RANGING";
   } else if (input.macdState === "RED_FALLING") {
     status = "🔴 AVOID";
   }

@@ -1,9 +1,18 @@
 const BASE_URL = "https://fapi.binance.com";
 
-export async function fetchBinance<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
+// Simple in-memory cache to avoid hammering Binance (prevents IP bans)
+const cache = new Map<string, { data: any; expires: number }>();
+
+export async function fetchBinance<T>(endpoint: string, params?: Record<string, string>, ttlMs = 15000): Promise<T> {
   const url = new URL(`${BASE_URL}${endpoint}`);
   if (params) {
     Object.entries(params).forEach(([key, value]) => url.searchParams.append(key, value));
+  }
+
+  const cacheKey = url.toString();
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() < cached.expires) {
+    return cached.data as T;
   }
   
   const res = await fetch(url.toString(), {
@@ -19,7 +28,9 @@ export async function fetchBinance<T>(endpoint: string, params?: Record<string, 
     throw new Error(`Binance API Error ${res.status}: ${errorMsg}`);
   }
 
-  return res.json();
+  const data = await res.json();
+  cache.set(cacheKey, { data, expires: Date.now() + ttlMs });
+  return data as T;
 }
 
 export type Kline = {
@@ -60,15 +71,17 @@ export async function getKlines(symbol: string, interval: string, limit: number 
 }
 
 export async function getExchangeInfo() {
-  return fetchBinance<any>("/fapi/v1/exchangeInfo");
+  // exchangeInfo rarely changes — cache for 5 minutes
+  return fetchBinance<any>("/fapi/v1/exchangeInfo", undefined, 5 * 60 * 1000);
 }
 
 export async function get24hTickers() {
-  return fetchBinance<any[]>("/fapi/v1/ticker/24hr");
+  // All tickers — cache for 30 seconds (heavy call)
+  return fetchBinance<any[]>("/fapi/v1/ticker/24hr", undefined, 30000);
 }
 
 export async function get24hTicker(symbol: string) {
-  return fetchBinance<any>("/fapi/v1/ticker/24hr", { symbol });
+  return fetchBinance<any>("/fapi/v1/ticker/24hr", { symbol }, 15000);
 }
 
 export async function getOpenInterestHist(symbol: string, period: string, limit: number = 30) {

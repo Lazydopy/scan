@@ -9,7 +9,12 @@ export async function GET() {
     const exchangeInfo = await getExchangeInfo();
     const validSymbols = new Set(
       exchangeInfo.symbols
-        .filter((s: any) => s.quoteAsset === "USDT" && s.contractType === "PERPETUAL" && s.status === "TRADING")
+        .filter((s: any) => 
+          s.quoteAsset === "USDT" && 
+          s.contractType === "PERPETUAL" && 
+          s.status === "TRADING" &&
+          s.underlyingType === "COIN"  // crypto only
+        )
         .map((s: any) => s.symbol)
     );
 
