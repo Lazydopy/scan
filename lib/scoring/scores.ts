@@ -2,6 +2,10 @@ import { MACDResult } from "../indicators/macd";
 import { CompressionResult } from "../indicators/compression";
 import { MarketStructure } from "../market-structure/levels";
 import { Kline } from "../binance/api";
+import { LiquidityHuntResult } from "../indicators/liquidity-hunt";
+import { OverheatResult } from "../indicators/overheat";
+import { MarketRegimeType } from "../market-structure/market-regime";
+import { calculateEntryTiming, EntryTimingResult } from "../market-structure/entry-timing";
 
 type ScoringInput = {
   macdState: MACDResult["state"];
@@ -14,23 +18,47 @@ type ScoringInput = {
   klines1h?: Kline[];
   bias?: "BULLISH" | "BEARISH" | "NEUTRAL";
   gain24h?: number;
+  liquidityHunt?: LiquidityHuntResult;
+  overheat?: OverheatResult;
+  marketRegime?: MarketRegimeType;
 };
 
-export function calculateScores(input: ScoringInput) {
+export type ScoreResult = {
+  setupScore: number;
+  pumpScore: number;
+  status: string;
+  pullback: number;
+  goldenPocket: { top: number; bottom: number };
+  entryTiming: EntryTimingResult;
+  isDipReversal: boolean;
+  isBullMomentum: boolean;
+  isOverheated: boolean;
+};
+
+export function calculateScores(input: ScoringInput): ScoreResult {
   let setupScore = 0;
   let pumpScore = 0;
 
+  const isFlashCrash = input.liquidityHunt?.isFlashCrashDip ?? false;
+  const absorptionScore = input.liquidityHunt?.absorptionScore ?? 0;
+  const isOverheated = input.overheat?.isOverheated ?? false;
+
   // 1. Price Compression (Max 15)
   setupScore += (input.compression.score / 100) * 15;
-  pumpScore += (input.compression.score / 100) * 20; // Compression is very important for pre-pump
+  pumpScore += (input.compression.score / 100) * 20;
 
-  // 1.5 MTF Trend Bias (Max 15 for BULLISH, penalty for BEARISH)
+  // 1.5 MTF Trend Bias (Max 15 for BULLISH)
   if (input.bias === "BULLISH") {
     setupScore += 15;
     pumpScore += 10;
   } else if (input.bias === "BEARISH") {
-    setupScore -= 10;
-    pumpScore -= 10;
+    // If it's a flash crash liquidity hunt, do not overly penalize a temporary 4H dip
+    if (isFlashCrash) {
+      setupScore -= 5;
+    } else {
+      setupScore -= 15;
+      pumpScore -= 15;
+    }
   }
 
   // 1.8 Momentum Multiplier (Max 15)
@@ -44,6 +72,12 @@ export function calculateScores(input: ScoringInput) {
     }
   }
 
+  // 1.9 Liquidity Hunt / Flash Crash Dip Absorption Bonus (Max 25)
+  if (isFlashCrash) {
+    setupScore += (absorptionScore / 100) * 25;
+    pumpScore += (absorptionScore / 100) * 25;
+  }
+
   let pullback = 0;
   let goldenPocket = { top: 0, bottom: 0 };
   if (input.klines1h && input.klines1h.length > 0) {
@@ -52,7 +86,7 @@ export function calculateScores(input: ScoringInput) {
       if (k.high > maxHigh) maxHigh = k.high;
     });
     const currentPrice = input.klines1h[input.klines1h.length - 1].close;
-    pullback = ((maxHigh - currentPrice) / maxHigh) * 100;
+    pullback = maxHigh > 0 ? ((maxHigh - currentPrice) / maxHigh) * 100 : 0;
     
     // Dynamic Golden Pocket based on Volume Bidding Area (Support)
     goldenPocket = {
@@ -60,25 +94,28 @@ export function calculateScores(input: ScoringInput) {
       bottom: input.structure.support      // Exact volume support floor
     };
 
-    // Evaluate pullback against the dynamic volume/bidding zone rather than hardcoded percentages
+    // Evaluate pullback against the dynamic volume/bidding zone
     if (input.structure.distanceToSupport >= 0 && input.structure.distanceToSupport <= 3) {
       setupScore += 15;
-      pumpScore += 15; // Perfectly inside the dynamic bidding zone (Golden Pocket)
+      pumpScore += 15; // In golden pocket zone
     } else if (input.structure.distanceToSupport < 0) {
-      setupScore -= 10;
-      pumpScore -= 10; // Dumped completely through the bidding area
+      // Below support: only penalize if it is NOT a swept liquidation wick
+      if (!isFlashCrash) {
+        setupScore -= 10;
+        pumpScore -= 10;
+      }
     } else if (input.structure.distanceToSupport > 3) {
-      if (pullback < 3) setupScore -= 5; // Hasn't pulled back enough into the volume zone yet
+      if (pullback < 3) setupScore -= 5;
     }
   }
 
   // 2. Volume Expansion (Max 15)
-  if (input.volumeRatio > 1.2 && input.volumeRatio <= 2) {
+  if (input.volumeRatio > 1.2 && input.volumeRatio <= 2.5) {
     setupScore += 10;
     pumpScore += 15;
-  } else if (input.volumeRatio > 2) {
+  } else if (input.volumeRatio > 2.5) {
     setupScore += 15;
-    pumpScore += 10; // slightly lower pump score if it's already massive
+    pumpScore += 10;
   }
 
   // 3. Breakout Structure & Resistance proximity (Max 15)
@@ -91,30 +128,39 @@ export function calculateScores(input: ScoringInput) {
   }
 
   // 4. OI Behavior (Max 20)
-  if (input.oiChange > 0 && input.oiChange <= 5) {
+  if (input.oiChange > 0 && input.oiChange <= 6) {
     setupScore += 15;
-    pumpScore += 20; // gradual OI build up is great
-  } else if (input.oiChange > 5) {
+    pumpScore += 20; // Gradual healthy OI build up
+  } else if (input.oiChange > 6) {
     setupScore += 20;
     pumpScore += 15;
+  } else if (input.oiChange < -5 && isFlashCrash) {
+    // OI dumped hard during flash crash (longs wiped) -> High fuel for reset bounce!
+    setupScore += 15;
+    pumpScore += 20;
   }
 
-  // OI Accumulation at Support (Divergence)
-  if (input.oiChange > 0 && input.structure.distanceToSupport < 2) {
+  // OI Accumulation at Support
+  if (input.oiChange > 0 && input.structure.distanceToSupport < 2.5) {
     pumpScore += 10;
     setupScore += 5;
   }
 
   // 5. Funding (Max 5)
   if (input.funding < 0) {
-    setupScore += 5;
-    pumpScore += 5; // potential squeeze
-  } else if (input.funding < 0.01) {
-    setupScore += 3;
-    pumpScore += 3;
+    // Negative funding = short squeeze fuel
+    setupScore += 8;
+    pumpScore += 8;
+  } else if (input.funding < 0.015) {
+    setupScore += 4;
+    pumpScore += 4;
+  } else if (input.funding >= 0.05) {
+    // Overheated positive funding = long squeeze danger
+    setupScore -= 15;
+    pumpScore -= 20;
   }
 
-  // 6. MACD state for Pump Score
+  // 6. MACD state
   if (input.macdState === "RED_IMPROVING" || input.macdState === "CROSSING_GREEN") {
     pumpScore += 20;
   } else if (input.macdState === "GREEN_RISING") {
@@ -125,61 +171,93 @@ export function calculateScores(input: ScoringInput) {
     setupScore += 10;
   }
 
-  // 7. Prevent chasing pumps
+  // 7. Overheat Penalties
+  if (isOverheated) {
+    setupScore -= 25;
+    pumpScore -= 30;
+  }
+
+  // 8. Prevent chasing pumps & determine primary status
   let status = "🟡 WATCH";
-  const recent = input.klines.slice(-3); // check last 3 candles
+  const recent = input.klines.slice(-3);
   let hasPumped = false;
   
   for (const k of recent) {
     const candleChange = ((k.close - k.open) / k.open) * 100;
-    if (candleChange > 10) hasPumped = true;
+    if (candleChange > 12) hasPumped = true;
   }
   
   const currentPrice = input.klines[input.klines.length - 1].close;
   const oldPrice = input.klines[0].open;
-  const totalChange = ((currentPrice - oldPrice) / oldPrice) * 100;
+  const totalChange = oldPrice > 0 ? ((currentPrice - oldPrice) / oldPrice) * 100 : 0;
   
   let isOverextended = false;
   if (input.klines1h && input.klines1h.length > 0) {
     let maxHigh = 0;
     input.klines1h.slice(-100).forEach(k => { if (k.high > maxHigh) maxHigh = k.high; });
-    const pullback = ((maxHigh - currentPrice) / maxHigh) * 100;
-    if (totalChange > 20 && pullback < 3) isOverextended = true;
+    const pb = maxHigh > 0 ? ((maxHigh - currentPrice) / maxHigh) * 100 : 0;
+    if (totalChange > 25 && pb < 3) isOverextended = true;
   } else {
-    if (totalChange > 20) isOverextended = true;
+    if (totalChange > 25) isOverextended = true;
   }
 
-  // Range-bound detection (takes priority over generic WATCH)
-  const pos = input.structure.positionInRange; // 0=bottom, 100=top
+  // Range detection
+  const pos = input.structure.positionInRange;
   const isRange = input.structure.isRangeBound;
   const rr = input.structure.rrRatio;
-  
-  if (isOverextended || hasPumped) {
+
+  // Determine status hierarchy:
+  if (isOverheated) {
+    status = "⚡ OVERHEATED";
+  } else if (isOverextended || hasPumped) {
     status = "⚠️ EXTENDED";
     pumpScore -= 40;
+  } else if (isFlashCrash && absorptionScore >= 50) {
+    // Highest priority in a volatile bull market dip!
+    status = "⚡ DIP-REVERSAL";
+    pumpScore += 15;
+    setupScore += 15;
   } else if (setupScore > 70 && pumpScore > 75) {
     status = "🟢 PRE-BREAKOUT";
+  } else if (input.gain24h && input.gain24h > 15 && input.bias === "BULLISH" && input.structure.distanceToSupport <= 3.5) {
+    status = "🔥 BULL-MOMENTUM";
   } else if (isRange && pos <= 20 && rr >= 1) {
-    // Bottom of range with decent R:R → prime range entry
     status = "🔵 RANGE-BOTTOM";
     pumpScore += 10;
     setupScore += 10;
   } else if (isRange && pos >= 80) {
-    // At top of range → wait, don't enter
     status = "🔴 RANGE-TOP";
     pumpScore -= 10;
   } else if (isRange) {
-    // Mid-range → wait for support
     status = "⚪ RANGING";
-  } else if (input.macdState === "RED_FALLING") {
+  } else if (input.macdState === "RED_FALLING" && !isFlashCrash) {
     status = "🔴 AVOID";
   }
+
+  // 9. Calculate Entry Timing Guidance ("Wait for Entry Point")
+  const entryTiming = calculateEntryTiming({
+    currentPrice,
+    support: input.structure.support,
+    resistance: input.structure.resistance,
+    breakoutTrigger: input.structure.breakoutTrigger,
+    reclaimLevel: input.liquidityHunt?.reclaimLevel,
+    isFlashCrashDip: isFlashCrash,
+    isRangeBound: isRange,
+    positionInRange: pos,
+    isOverheated,
+    pullbackPct: pullback,
+    setupStatus: status
+  });
 
   return {
     setupScore: Math.min(100, Math.max(0, Math.round(setupScore))),
     pumpScore: Math.min(100, Math.max(0, Math.round(pumpScore))),
     status,
     pullback,
-    goldenPocket
+    goldenPocket,
+    entryTiming,
+    isDipReversal: status === "⚡ DIP-REVERSAL" || isFlashCrash,
+    isBullMomentum: status === "🔥 BULL-MOMENTUM",
+    isOverheated
   };
 }

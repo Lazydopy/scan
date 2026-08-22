@@ -7,6 +7,7 @@ export type MarketStructure = {
   invalidation: number;
   target1: number;
   target2: number;
+  target3: number;           // Bull market extension (1.618 Fib)
   distanceToResistance: number;
   distanceToSupport: number;
   // Range analysis
@@ -15,7 +16,36 @@ export type MarketStructure = {
   isRangeBound: boolean;     // true if coin is oscillating in a defined channel
   slForRange: number;        // tight SL just below range support
   rrRatio: number;           // reward:risk ratio (target=resistance, risk=sl)
+  // Volatility & ATR Risk Buffer
+  atr: number;               // Average True Range
+  atrPct: number;            // ATR as % of price
+  dynamicSl: number;         // ATR-buffered Stop Loss (support - 1.2 * ATR)
+  recommendedLeverage: number; // Safe leverage recommendation based on volatility (2x to 5x)
 };
+
+export function calculateATR(klines: Kline[], period = 14): number {
+  if (klines.length < period + 1) {
+    const defaultRange = klines.length > 0 ? (klines[klines.length - 1].high - klines[klines.length - 1].low) : 0;
+    return defaultRange;
+  }
+
+  const trs: number[] = [];
+  for (let i = 1; i < klines.length; i++) {
+    const high = klines[i].high;
+    const low = klines[i].low;
+    const prevClose = klines[i - 1].close;
+    const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+    trs.push(tr);
+  }
+
+  // Calculate simple initial average
+  let atr = trs.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < trs.length; i++) {
+    atr = (atr * (period - 1) + trs[i]) / period;
+  }
+
+  return atr;
+}
 
 export function analyzeMarketStructure(klines: Kline[]): MarketStructure {
   const defaultPrice = klines[klines.length - 1]?.close || 0;
@@ -23,25 +53,34 @@ export function analyzeMarketStructure(klines: Kline[]): MarketStructure {
     support: defaultPrice,
     resistance: defaultPrice,
     breakoutTrigger: defaultPrice,
-    invalidation: defaultPrice * 0.98,
+    invalidation: defaultPrice * 0.96,
     target1: defaultPrice,
     target2: defaultPrice,
+    target3: defaultPrice,
     distanceToResistance: 0,
     distanceToSupport: 0,
     rangeWidth: 0,
     positionInRange: 50,
     isRangeBound: false,
-    slForRange: defaultPrice * 0.97,
-    rrRatio: 0
+    slForRange: defaultPrice * 0.96,
+    rrRatio: 0,
+    atr: 0,
+    atrPct: 0,
+    dynamicSl: defaultPrice * 0.96,
+    recommendedLeverage: 3
   };
 
-  if (klines.length < 50) return defaultResult;
+  if (klines.length < 30) return defaultResult;
 
-  // Use last 100 candles for range analysis (bigger picture)
+  // Use last 100 candles for range analysis
   const recent = klines.slice(-100);
   const currentPrice = recent[recent.length - 1].close;
 
-  // Find swing highs and lows using a simple pivot detection
+  // 1. Calculate ATR for dynamic volatility buffering
+  const atr = calculateATR(recent, 14);
+  const atrPct = currentPrice > 0 ? (atr / currentPrice) * 100 : 0;
+
+  // Find swing highs and lows using pivot detection
   const swingHighs: number[] = [];
   const swingLows: number[] = [];
 
@@ -82,28 +121,42 @@ export function analyzeMarketStructure(klines: Kline[]): MarketStructure {
   ));
 
   // A coin is range-bound if:
-  // - Range width is between 5% and 45% (meaningful but not a crazy dump)
-  // - Has at least 2 swing highs AND 2 swing lows (it has oscillated)
-  const isRangeBound = rangeWidth >= 5 && rangeWidth <= 45 && swingHighs.length >= 2 && swingLows.length >= 2;
+  // - Range width is between 5% and 50%
+  // - Has at least 2 swing highs AND 2 swing lows
+  const isRangeBound = rangeWidth >= 5 && rangeWidth <= 50 && swingHighs.length >= 2 && swingLows.length >= 2;
 
   const distanceToResistance = ((resistance - currentPrice) / currentPrice) * 100;
   const distanceToSupport    = ((currentPrice - support) / currentPrice) * 100;
 
   // Trigger is just slightly above resistance
-  const breakoutTrigger = resistance * 1.002;
+  const breakoutTrigger = resistance * 1.003;
 
-  // Invalidation: 2% below support (tight SL for range trades)
-  const slForRange  = support * 0.98;
-  const invalidation = slForRange;
+  // Dynamic ATR Stop Loss: In a bull market, tight stops get wick-hunted.
+  // We place the Stop Loss at Support minus 1.2x ATR buffer (or min 2.5%, max 6%)
+  const atrBuffer = Math.max(atr * 1.2, support * 0.025);
+  const dynamicSl = Math.max(0, support - atrBuffer);
+  const slForRange = dynamicSl;
+  const invalidation = dynamicSl;
 
-  const rangeTarget = resistance;
-  const rewardPct   = ((rangeTarget - currentPrice) / currentPrice) * 100;
-  const riskPct     = ((currentPrice - slForRange) / currentPrice) * 100;
-  const rrRatio     = riskPct > 0 ? rewardPct / riskPct : 0;
+  // Target Projections
+  const rangeSize = Math.max(0, resistance - support);
+  const target1 = resistance;
+  const target2 = resistance + rangeSize * 0.618;
+  const target3 = resistance + rangeSize * 1.618; // Bull market extended target
 
-  const rangeSize = resistance - support;
-  const target1 = resistance + rangeSize * 0.5;
-  const target2 = resistance + rangeSize;
+  // Risk / Reward Ratio
+  const riskAmount = currentPrice - dynamicSl;
+  const rewardAmount = resistance - currentPrice;
+  const rrRatio = riskAmount > 0 ? Math.max(0, rewardAmount / riskAmount) : 0;
+
+  // Recommended Max Leverage based on Volatility (ATR %)
+  // High volatility (ATR > 6%) -> Max 2x leverage to avoid flash crash liquidations
+  // Medium volatility (ATR 3.5 - 6%) -> Max 3x leverage
+  // Low volatility (ATR < 3.5%) -> Max 5x leverage
+  let recommendedLeverage = 3;
+  if (atrPct >= 6.0) recommendedLeverage = 2;
+  else if (atrPct <= 3.0) recommendedLeverage = 5;
+  else recommendedLeverage = 3;
 
   return {
     support,
@@ -112,12 +165,17 @@ export function analyzeMarketStructure(klines: Kline[]): MarketStructure {
     invalidation,
     target1,
     target2,
+    target3,
     distanceToResistance,
     distanceToSupport,
     rangeWidth,
     positionInRange,
     isRangeBound,
     slForRange,
-    rrRatio
+    rrRatio: Math.round(rrRatio * 10) / 10,
+    atr,
+    atrPct: Math.round(atrPct * 10) / 10,
+    dynamicSl,
+    recommendedLeverage
   };
 }

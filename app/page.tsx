@@ -5,17 +5,17 @@ import BtcStatus from "@/components/BtcStatus";
 import CandidateCard from "@/components/CandidateCard";
 import CoinModal from "@/components/CoinModal";
 import MarketHeatmap from "@/components/MarketHeatmap";
-import { Search, Loader2, LayoutGrid, ScanLine, BarChart2, TrendingUp } from "lucide-react";
+import { Search, Loader2, LayoutGrid, ScanLine, BarChart2, TrendingUp, Zap, Flame, Shield, HelpCircle, Check, Copy, X } from "lucide-react";
 
-type Tab = "SCANNER" | "RANGE" | "MACD" | "MARKET";
+type Tab = "SCANNER" | "DIP_HUNTER" | "RANGE" | "MACD" | "MARKET";
 
 function EmptyState({ icon: Icon, message }: { icon: any; message: string }) {
   return (
-    <div className="flex flex-col justify-center items-center py-20 opacity-50">
+    <div className="flex flex-col justify-center items-center py-20 opacity-60">
       <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
         <Icon size={24} className="text-muted-foreground" />
       </div>
-      <p className="text-sm font-medium text-muted-foreground text-center px-4">{message}</p>
+      <p className="text-xs font-semibold text-muted-foreground text-center px-4 max-w-xs">{message}</p>
     </div>
   );
 }
@@ -31,7 +31,7 @@ function CandidateList({
 }) {
   if (coins.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground text-xs font-medium">
+      <div className="text-center py-12 text-muted-foreground text-xs font-medium bg-white rounded-2xl border border-border/50 p-6">
         {emptyMessage}
       </div>
     );
@@ -50,10 +50,13 @@ export default function Home() {
   const [isScanning, setIsScanning] = useState(false);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [marketData, setMarketData] = useState<any>(null);
+  const [marketRegime, setMarketRegime] = useState<any>(null);
   const [error, setError] = useState("");
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
-  const [filterStrategy, setFilterStrategy] = useState<"ALL" | "PRE-BREAKOUT" | "WATCH">("ALL");
+  const [filterStrategy, setFilterStrategy] = useState<"ALL" | "READY_ONLY" | "PRE-BREAKOUT" | "DIP" | "MOMENTUM" | "RANGE">("ALL");
   const [currentTab, setCurrentTab] = useState<Tab>("SCANNER");
+  const [showCronModal, setShowCronModal] = useState(false);
+  const [copiedCron, setCopiedCron] = useState(false);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,7 +70,6 @@ export default function Home() {
     if (isScanning) return;
     setIsScanning(true);
     setError("");
-    setCandidates([]);
 
     try {
       const [scanRes, marketRes] = await Promise.all([
@@ -84,6 +86,7 @@ export default function Home() {
       if (marketJson.error) throw new Error(marketJson.error);
 
       setCandidates(scanData.candidates || []);
+      setMarketRegime(scanData.marketRegime || null);
       setMarketData(marketJson);
     } catch (err: any) {
       setError(err.message || "An error occurred during scan.");
@@ -92,10 +95,14 @@ export default function Home() {
     }
   };
 
-  // Derived filtered lists (no extra API calls)
+  // Derived filtered candidate lists
+  const dipCandidates = candidates.filter(
+    (c) => c.isDipReversal || c.status.includes("DIP-REVERSAL") || c.liquidityHunt?.isFlashCrashDip
+  ).sort((a, b) => (b.liquidityHunt?.absorptionScore ?? 0) - (a.liquidityHunt?.absorptionScore ?? 0));
+
   const rangeCandidates = candidates
     .filter((c) => c.isRangeBound)
-    .sort((a, b) => (a.positionInRange ?? 50) - (b.positionInRange ?? 50)); // bottoms first
+    .sort((a, b) => (a.positionInRange ?? 50) - (b.positionInRange ?? 50));
 
   const macdCandidates = candidates
     .filter((c) => c.macdState === "RED_IMPROVING" || c.macdState === "CROSSING_GREEN")
@@ -103,23 +110,41 @@ export default function Home() {
 
   const filteredScannerCandidates = candidates.filter((c) => {
     if (filterStrategy === "ALL") return true;
+    if (filterStrategy === "READY_ONLY") return c.entryTiming?.status === "READY";
     if (filterStrategy === "PRE-BREAKOUT") return c.status.includes("PRE-BREAKOUT");
-    if (filterStrategy === "WATCH") return c.status.includes("WATCH");
+    if (filterStrategy === "DIP") return c.isDipReversal || c.status.includes("DIP-REVERSAL");
+    if (filterStrategy === "MOMENTUM") return c.status.includes("BULL-MOMENTUM");
+    if (filterStrategy === "RANGE") return c.status.includes("RANGE-BOTTOM") || c.isRangeBound;
     return true;
   });
 
-  const navBtn = (tab: Tab, icon: any, label: string) => {
+  const readyEntryCount = candidates.filter((c) => c.entryTiming?.status === "READY").length;
+
+  const copyCronUrl = () => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const url = `${origin}/api/cron`;
+    navigator.clipboard.writeText(url);
+    setCopiedCron(true);
+    setTimeout(() => setCopiedCron(false), 2500);
+  };
+
+  const navBtn = (tab: Tab, icon: any, label: string, badgeCount?: number) => {
     const Icon = icon;
     const active = currentTab === tab;
     return (
       <button
         onClick={() => setCurrentTab(tab)}
-        className={`flex flex-col items-center gap-0.5 transition-all flex-1 ${
+        className={`flex flex-col items-center gap-0.5 transition-all flex-1 relative ${
           active ? "text-primary scale-105" : "text-muted-foreground hover:text-foreground"
         }`}
       >
-        <Icon size={20} strokeWidth={active ? 2.5 : 2} />
+        <Icon size={19} strokeWidth={active ? 2.5 : 2} />
         <span className="text-[9px] font-bold">{label}</span>
+        {badgeCount !== undefined && badgeCount > 0 && (
+          <span className="absolute -top-1 right-2 bg-primary text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-sm">
+            {badgeCount}
+          </span>
+        )}
       </button>
     );
   };
@@ -127,29 +152,47 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen bg-background">
       {/* Header */}
-      <header className="px-5 pt-10 pb-4 bg-white sticky top-0 z-20">
-        <div className="flex justify-between items-center mb-6">
+      <header className="px-5 pt-8 pb-3 bg-white sticky top-0 z-20 border-b border-border/40">
+        <div className="flex justify-between items-center mb-4">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Pump Scanner</h1>
-            <p className="text-[11px] text-muted-foreground font-medium mt-0.5">Pre-Breakout Engine</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-black text-foreground">Pump Scanner</h1>
+              <span className="text-[9px] font-extrabold bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase">
+                Bull Market v2
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
+              Liquidity Hunts · Dip Reversals · Entry Timing
+            </p>
           </div>
+
+          <button
+            onClick={() => setShowCronModal(true)}
+            className="flex items-center gap-1 text-[11px] font-bold text-muted-foreground bg-muted/50 hover:bg-muted px-2.5 py-1.5 rounded-xl transition-all"
+            title="cron-job.org Setup"
+          >
+            <HelpCircle size={13} />
+            <span>Cron Setup</span>
+          </button>
         </div>
+
+        {/* Search Bar */}
         <form onSubmit={handleSearch} className="relative">
-          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-            <Search size={16} className="text-muted-foreground" />
+          <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
+            <Search size={15} className="text-muted-foreground" />
           </div>
           <input
             type="text"
-            className="w-full bg-[#f3f4f6] border-none rounded-xl py-3.5 pl-11 pr-24 text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:text-muted-foreground/70"
-            placeholder="Search symbol (e.g. BTC)"
+            className="w-full bg-[#f3f4f6] border-none rounded-xl py-3 pl-10 pr-20 text-xs font-semibold focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:text-muted-foreground/70"
+            placeholder="Search coin (e.g. SOL, DOGE, SUI)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           <button
             type="submit"
-            className="absolute right-2 top-1.5 bottom-1.5 bg-primary text-white px-4 rounded-lg text-[11px] font-bold transition-all active:scale-95"
+            className="absolute right-1.5 top-1.5 bottom-1.5 bg-primary text-white px-3.5 rounded-lg text-[10px] font-bold transition-all active:scale-95 shadow-sm"
           >
-            Check
+            Analyze
           </button>
         </form>
       </header>
@@ -157,10 +200,38 @@ export default function Home() {
       {/* Main Content */}
       <main className="flex-1 px-5 pb-32 relative z-10 pt-4">
 
+        {/* ── ⚡ DIP HUNTER TAB (FLASH CRASH REVERSALS) ── */}
+        <div className={currentTab === "DIP_HUNTER" ? "flex flex-col gap-4" : "hidden"}>
+          <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Zap size={16} className="text-purple-600 fill-purple-600" />
+              <h2 className="text-xs font-bold text-purple-900 uppercase tracking-wider">⚡ Dip Hunter: Liquidity Sweeps</h2>
+            </div>
+            <p className="text-[11px] text-purple-800/80 font-medium leading-relaxed">
+              Detects coins that dropped violently in flash crashes, wicked below support, absorbed limit bids, and are reclaiming structural levels.
+            </p>
+          </div>
+
+          {isScanning ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <Loader2 size={32} className="animate-spin text-purple-600" />
+              <div className="text-xs font-bold text-purple-600 tracking-widest uppercase">Hunting Flash Dips...</div>
+            </div>
+          ) : candidates.length === 0 ? (
+            <EmptyState icon={Zap} message="Press scan to hunt flash crash liquidity sweeps and wick reversals" />
+          ) : (
+            <CandidateList
+              coins={dipCandidates}
+              onSelect={setSelectedSymbol}
+              emptyMessage="No active flash crash dip candidates right now. Market is stable."
+            />
+          )}
+        </div>
+
         {/* ── MARKET OVERVIEW ── */}
         <div className={currentTab === "MARKET" ? "block" : "hidden"}>
           {!marketData && !isScanning ? (
-            <EmptyState icon={LayoutGrid} message="Press the scan button to load market overview" />
+            <EmptyState icon={LayoutGrid} message="Press the scan button to load market breadth and overview" />
           ) : (
             <MarketHeatmap data={marketData} loading={isScanning} onSelectCoin={setSelectedSymbol} />
           )}
@@ -171,7 +242,7 @@ export default function Home() {
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-[14px] font-bold text-foreground">Range Setups</h2>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Sorted: bottoms first · tap for Range Map</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Sorted: bottoms first with ATR buffers</p>
             </div>
             {rangeCandidates.length > 0 && (
               <span className="text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded-full">
@@ -201,7 +272,7 @@ export default function Home() {
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-[14px] font-bold text-foreground">MACD Turning Green</h2>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Red → improving or crossing signal line</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Red improving or crossing signal line</p>
             </div>
             {macdCandidates.length > 0 && (
               <span className="text-[10px] font-bold bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full">
@@ -218,47 +289,36 @@ export default function Home() {
           ) : candidates.length === 0 ? (
             <EmptyState icon={TrendingUp} message="Press scan to find coins where MACD is turning green" />
           ) : (
-            <>
-              {/* MACD State legend */}
-              <div className="flex gap-2">
-                <div className="flex items-center gap-1 text-[9px] font-bold bg-orange-50 text-orange-600 border border-orange-100 px-2 py-1 rounded-lg">
-                  <div className="w-1.5 h-1.5 rounded-full bg-orange-500" /> RED_IMPROVING
-                </div>
-                <div className="flex items-center gap-1 text-[9px] font-bold bg-green-50 text-green-600 border border-green-100 px-2 py-1 rounded-lg">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500" /> CROSSING_GREEN
-                </div>
-              </div>
-              <CandidateList
-                coins={macdCandidates}
-                onSelect={setSelectedSymbol}
-                emptyMessage="No coins found with MACD turning green right now."
-              />
-            </>
+            <CandidateList
+              coins={macdCandidates}
+              onSelect={setSelectedSymbol}
+              emptyMessage="No coins found with MACD turning green right now."
+            />
           )}
         </div>
 
-        {/* ── SCANNER (default) ── */}
-        <div className={currentTab === "SCANNER" ? "flex flex-col gap-6" : "hidden"}>
+        {/* ── SCANNER (DEFAULT) ── */}
+        <div className={currentTab === "SCANNER" ? "flex flex-col gap-5" : "hidden"}>
           <section>
-            <div className="flex justify-between items-center mb-3">
-              <h2 className="text-[13px] font-bold text-foreground">Market Stock</h2>
+            <div className="flex justify-between items-center mb-2.5">
+              <h2 className="text-[13px] font-bold text-foreground">Market Stock & Regime</h2>
             </div>
             <BtcStatus />
           </section>
 
           {candidates.length === 0 && !isScanning && !error && (
-            <EmptyState icon={Search} message="No recent signals" />
+            <EmptyState icon={Search} message="Press the scan button below to analyze the market and find high probability setups" />
           )}
 
           {isScanning && (
             <div className="flex flex-col items-center justify-center py-20 gap-4">
               <Loader2 size={32} className="animate-spin text-primary" />
-              <div className="text-xs font-bold text-primary tracking-widest uppercase">Fetching Signals...</div>
+              <div className="text-xs font-bold text-primary tracking-widest uppercase">Running Fast Multi-Layer Scan...</div>
             </div>
           )}
 
           {error && (
-            <div className="bg-error/10 text-error p-4 rounded-2xl border border-error/20 text-center mx-5">
+            <div className="bg-error/10 text-error p-4 rounded-2xl border border-error/20 text-center mx-1">
               <h3 className="font-bold text-sm mb-1">Scan Failed</h3>
               <p className="text-xs font-medium">{error}</p>
               <button
@@ -272,30 +332,38 @@ export default function Home() {
 
           {candidates.length > 0 && !isScanning && (
             <section className="flex flex-col gap-3">
-              <div className="flex justify-between items-center mb-1">
+              <div className="flex justify-between items-center">
                 <h2 className="text-[13px] font-bold text-foreground">
-                  Recent Signals{" "}
-                  <span className="text-muted-foreground font-normal ml-1">({candidates.length} found)</span>
+                  Scanned Signals{" "}
+                  <span className="text-muted-foreground font-normal ml-1">({candidates.length} active)</span>
                 </h2>
+                {readyEntryCount > 0 && (
+                  <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    🎯 {readyEntryCount} in Entry Zone
+                  </span>
+                )}
               </div>
 
-              {/* Filter Tabs */}
-              <div className="flex gap-2 mb-2 bg-muted/30 p-1 rounded-xl">
-                {(["ALL", "PRE-BREAKOUT", "WATCH"] as const).map((f) => (
+              {/* Enhanced Strategy Filter Tabs */}
+              <div className="flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+                {[
+                  { id: "ALL", label: "All Setups" },
+                  { id: "READY_ONLY", label: "🎯 Ready to Enter" },
+                  { id: "DIP", label: "⚡ Dip Reversals" },
+                  { id: "PRE-BREAKOUT", label: "🟢 Pre-Breakout" },
+                  { id: "MOMENTUM", label: "🔥 Momentum" },
+                  { id: "RANGE", label: "🔵 Range Bottom" },
+                ].map((f) => (
                   <button
-                    key={f}
-                    onClick={() => setFilterStrategy(f)}
-                    className={`flex-1 text-[11px] font-bold py-1.5 rounded-lg transition-all ${
-                      filterStrategy === f
-                        ? f === "PRE-BREAKOUT"
-                          ? "bg-white shadow-sm text-success"
-                          : f === "WATCH"
-                          ? "bg-white shadow-sm text-warning"
-                          : "bg-white shadow-sm text-foreground"
-                        : "text-muted-foreground hover:text-foreground"
+                    key={f.id}
+                    onClick={() => setFilterStrategy(f.id as any)}
+                    className={`text-[10px] font-bold px-3 py-1.5 rounded-xl whitespace-nowrap transition-all border ${
+                      filterStrategy === f.id
+                        ? "bg-foreground text-white border-foreground shadow-sm"
+                        : "bg-white text-muted-foreground border-border hover:text-foreground"
                     }`}
                   >
-                    {f === "PRE-BREAKOUT" ? "Pre-Breakout" : f === "WATCH" ? "Watch" : "All"}
+                    {f.label}
                   </button>
                 ))}
               </div>
@@ -303,7 +371,7 @@ export default function Home() {
               <CandidateList
                 coins={filteredScannerCandidates}
                 onSelect={setSelectedSymbol}
-                emptyMessage="No coins match this filter."
+                emptyMessage="No coins match this strategy filter."
               />
             </section>
           )}
@@ -311,30 +379,72 @@ export default function Home() {
       </main>
 
       {/* ── BOTTOM NAVIGATION ── */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 pt-3 pb-5 flex justify-between items-center z-40 shadow-[0_-4px_20px_rgb(0,0,0,0.04)]">
-        {/* Left: Scanner + Range */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-3 pt-3 pb-5 flex justify-between items-center z-40 shadow-[0_-4px_20px_rgb(0,0,0,0.04)]">
         {navBtn("SCANNER", ScanLine, "Scanner")}
-        {navBtn("RANGE", BarChart2, "Range")}
+        {navBtn("DIP_HUNTER", Zap, "Dip Hunter", dipCandidates.length)}
 
         {/* Centre FAB */}
-        <div className="relative -top-6 flex-shrink-0 mx-3">
+        <div className="relative -top-6 flex-shrink-0 mx-2">
           <button
             onClick={handleScan}
             disabled={isScanning}
             className="bg-primary text-white p-4 rounded-full shadow-[0_8px_24px_rgba(59,130,246,0.45)] hover:bg-primary-hover active:scale-95 transition-all flex items-center justify-center disabled:opacity-70"
+            title="Scan Market"
           >
             {isScanning ? <Loader2 size={22} className="animate-spin" /> : <Search size={22} strokeWidth={3} />}
           </button>
         </div>
 
-        {/* Right: MACD + Overview */}
-        {navBtn("MACD", TrendingUp, "MACD")}
+        {navBtn("RANGE", BarChart2, "Range")}
         {navBtn("MARKET", LayoutGrid, "Overview")}
       </div>
 
       {/* Coin Details Modal */}
       {selectedSymbol && (
         <CoinModal symbol={selectedSymbol} onClose={() => setSelectedSymbol(null)} />
+      )}
+
+      {/* Cron Job Setup Modal */}
+      {showCronModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] z-50 flex items-center justify-center p-5">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl flex flex-col gap-4 animate-in fade-in zoom-in-95">
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-sm text-foreground">cron-job.org Setup</h3>
+              <button onClick={() => setShowCronModal(false)} className="p-1 hover:bg-muted rounded-full">
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Keep your scanner running automatically without exceeding free tier limits:
+            </p>
+
+            <div className="bg-muted/40 p-3 rounded-2xl border border-border/50 flex flex-col gap-2">
+              <span className="text-[10px] text-muted-foreground font-semibold uppercase">Your Cron URL</span>
+              <div className="flex items-center justify-between gap-2 bg-white px-3 py-2 rounded-xl border text-[11px] font-mono text-foreground">
+                <span className="truncate">
+                  {typeof window !== "undefined" ? `${window.location.origin}/api/cron` : "/api/cron"}
+                </span>
+                <button onClick={copyCronUrl} className="text-primary hover:text-primary-hover flex-shrink-0">
+                  {copiedCron ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-muted-foreground space-y-1.5">
+              <div>⏰ <strong>Recommended Interval:</strong> Every 5 or 10 minutes.</div>
+              <div>⚡ <strong>Free Tier Safe:</strong> Automatically prunes database to keep DB tiny.</div>
+              <div>🛡️ <strong>Method:</strong> GET or POST.</div>
+            </div>
+
+            <button
+              onClick={() => setShowCronModal(false)}
+              className="w-full bg-foreground text-white font-bold py-2.5 rounded-xl text-xs mt-1"
+            >
+              Done
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
