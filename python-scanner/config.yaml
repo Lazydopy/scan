@@ -1,0 +1,97 @@
+# ============================================================
+# Binance Pre-Pump Scanner — Configuration
+# ============================================================
+# Edit values here. Do NOT put secrets here.
+# Secrets go in .env or GitHub Secrets.
+
+scanner:
+  scan_interval_seconds: 120        # How often to auto-scan (seconds)
+  mode: fast                         # default mode: fast | deep | next-pump
+  max_symbols: 150                   # Max symbols to scan per run
+  top_candidates: 20                 # Number of top candidates to return
+
+liquidity:
+  min_spot_volume_usdt: 5_000_000    # Min 24h spot quote volume (USDT)
+  min_futures_volume_usdt: 3_000_000 # Min 24h futures quote volume (USDT)
+  min_candle_history: 50             # Min closed candles required
+  exclude_stablecoins:
+    - USDC
+    - BUSD
+    - TUSD
+    - USDT
+    - DAI
+    - FDUSD
+    - USDP
+  exclude_leveraged_tokens:
+    - UPUSDT
+    - DOWNUSDT
+    - BEARUSDT
+    - BULLUSDT
+
+candles:
+  primary_tf: 15m                    # Primary timeframe
+  confirm_tf: 5m                     # Confirmation timeframe
+  context_tf: 1h                     # Context timeframe
+  compression_window: 14             # Closed candles for compression (8-20)
+  resistance_window: 40              # Closed candles for resistance detection
+  volume_window_short: 10            # Short volume median window
+  volume_window_long: 20             # Long volume median window
+  oi_window: 8                       # OI history periods to compare
+
+compression:
+  tight_range_pct: 3.0               # % range considered compressed
+  atr_ratio_threshold: 0.7           # Recent ATR / Historical ATR
+  min_candles_in_range: 6            # Min candles inside tight range
+
+recent_pump_filter:
+  extended_15m_pct: 10.0             # % on single 15m candle = EXTENDED
+  extended_total_pct: 15.0           # % over several candles = EXTENDED
+  heavy_extended_pct: 20.0           # % rapid = do not rank as pre-breakout
+  cooldown_candles: 8                # Candles since pump before re-evaluation
+
+scoring:
+  weights:
+    compression: 15
+    volume: 15
+    breakout_structure: 15
+    oi_behavior: 20
+    price_oi_divergence: 10
+    funding: 5
+    liquidity: 5
+    trend_1h: 5
+    distance_from_pump: 10
+
+alerts:
+  enabled: true                      # Set false to disable Telegram
+  min_setup_score: 70                # Min setup score to alert
+  min_pump_score: 70                 # Min pump score to alert
+  dedup_window_minutes: 15           # Don't re-alert same symbol for N min
+  score_change_threshold: 8          # Re-alert if score changes by this much
+  send_watch_alerts: true            # Send lower-priority WATCH alerts
+  min_watch_score: 55                # Min score for WATCH alert
+
+btc_filter:
+  sharp_selloff_pct: -1.5            # BTC 15m drop = BEARISH
+  bullish_threshold_pct: 0.5         # BTC 15m rise = BULLISH
+  reduce_confidence_on_bearish: true
+
+targets:
+  method: atr_projection             # atr_projection | swing_high | range_expansion
+  target1_atr_mult: 1.5
+  target2_atr_mult: 3.0
+  invalidation_atr_mult: 0.75
+
+database:
+  path: data/scanner.db              # SQLite path (relative to python-scanner/)
+  max_history_days: 7                # Days of history to keep
+
+logging:
+  level: INFO                        # DEBUG | INFO | WARNING | ERROR
+  log_file: logs/scanner.log
+  max_bytes: 10_485_760             # 10 MB
+  backup_count: 5
+
+api:
+  host: 0.0.0.0
+  port: 8000
+  debug: false

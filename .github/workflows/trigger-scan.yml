@@ -1,0 +1,63 @@
+name: Trigger Scanner Scan
+
+# This workflow is triggered by cron-job.org via a repository_dispatch event.
+# Set up cron-job.org to send a POST to:
+#   https://api.github.com/repos/{owner}/{repo}/dispatches
+# With headers:
+#   Authorization: Bearer {YOUR_GITHUB_PAT}
+#   Content-Type: application/json
+# Body:
+#   {"event_type": "trigger-scan", "client_payload": {"mode": "fast"}}
+
+on:
+  repository_dispatch:
+    types: [trigger-scan]
+
+  # Also allow manual triggering from GitHub UI
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Scan mode'
+        required: false
+        default: 'fast'
+        type: choice
+        options:
+          - fast
+          - deep
+          - next-pump
+
+jobs:
+  scan:
+    name: Run Pre-Pump Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+          cache-dependency-path: python-scanner/requirements.txt
+
+      - name: Install dependencies
+        working-directory: python-scanner
+        run: pip install -r requirements.txt
+
+      - name: Create data/logs directories
+        working-directory: python-scanner
+        run: |
+          mkdir -p data
+          mkdir -p logs
+
+      - name: Run scan
+        working-directory: python-scanner
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          MODE="${{ github.event.client_payload.mode || github.event.inputs.mode || 'fast' }}"
+          echo "Running scan in mode: $MODE"
+          python scripts/scanner.py scan --mode "$MODE"
