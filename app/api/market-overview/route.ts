@@ -1,19 +1,46 @@
 import { NextResponse } from "next/server";
 import { getExchangeInfo, get24hTickers } from "@/lib/binance/api";
+import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 60; // optionally cache for 60 seconds
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dummy.supabase.co",
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "dummy"
+);
 
 export async function GET() {
   try {
+    // 1. Try Supabase fast-cache first
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_URL !== "https://dummy.supabase.co") {
+      const { data: latestRun } = await supabase
+        .from("scan_runs")
+        .select("status")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestRun?.status) {
+        try {
+          const parsed = JSON.parse(latestRun.status);
+          if (parsed.marketOverview) {
+            return NextResponse.json(parsed.marketOverview);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    // 2. Fallback to live Binance query
     const exchangeInfo = await getExchangeInfo();
     const validSymbols = new Set(
       exchangeInfo.symbols
-        .filter((s: any) => 
-          s.quoteAsset === "USDT" && 
-          s.contractType === "PERPETUAL" && 
+        .filter((s: any) =>
+          s.quoteAsset === "USDT" &&
+          s.contractType === "PERPETUAL" &&
           s.status === "TRADING" &&
-          s.underlyingType === "COIN"  // crypto only
+          s.underlyingType === "COIN"
         )
         .map((s: any) => s.symbol)
     );
@@ -28,19 +55,8 @@ export async function GET() {
         quoteVolume: parseFloat(t.quoteVolume)
       }));
 
-    // Sort by price change
     const sortedTickers = [...cryptoTickers].sort((a, b) => b.priceChangePercent - a.priceChangePercent);
-
-    // Distribution Buckets
-    const distribution = {
-      up10: 0,
-      up5: 0,
-      up0: 0,
-      down0: 0,
-      down5: 0,
-      down10: 0
-    };
-
+    const distribution = { up10: 0, up5: 0, up0: 0, down0: 0, down5: 0, down10: 0 };
     let totalUp = 0;
     let totalDown = 0;
 
@@ -56,16 +72,13 @@ export async function GET() {
       else totalDown++;
     }
 
-    const topGainers = sortedTickers.slice(0, 20);
-    const topLosers = sortedTickers.slice(-20).reverse();
-
     return NextResponse.json({
       totalCoins: cryptoTickers.length,
       totalUp,
       totalDown,
       distribution,
-      topGainers,
-      topLosers
+      topGainers: sortedTickers.slice(0, 20),
+      topLosers: sortedTickers.slice(-20).reverse()
     });
   } catch (error) {
     console.error("Failed to fetch market overview:", error);

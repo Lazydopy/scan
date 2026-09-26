@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import BtcStatus from "@/components/BtcStatus";
 import CandidateCard from "@/components/CandidateCard";
 import CoinModal from "@/components/CoinModal";
@@ -57,6 +57,8 @@ export default function Home() {
   const [currentTab, setCurrentTab] = useState<Tab>("SCANNER");
   const [showCronModal, setShowCronModal] = useState(false);
   const [copiedCron, setCopiedCron] = useState(false);
+  const [lastScanTime, setLastScanTime] = useState<string | null>(null);
+  const [workerLive, setWorkerLive] = useState(false);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,12 +90,27 @@ export default function Home() {
       setCandidates(scanData.candidates || []);
       setMarketRegime(scanData.marketRegime || null);
       setMarketData(marketJson);
+
+      if (scanData.lastScanTime) {
+        setLastScanTime(scanData.lastScanTime);
+        const ageSec = (Date.now() - new Date(scanData.lastScanTime).getTime()) / 1000;
+        setWorkerLive(ageSec < 240); // Active if updated in last 4 mins
+      }
     } catch (err: any) {
       setError(err.message || "An error occurred during scan.");
     } finally {
       setIsScanning(false);
     }
   };
+
+  // Auto-fetch on mount & poll every 45s
+  useEffect(() => {
+    handleScan();
+    const timer = setInterval(() => {
+      handleScan();
+    }, 45000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Derived filtered candidate lists
   const dipCandidates = candidates.filter(
@@ -168,11 +185,15 @@ export default function Home() {
 
           <button
             onClick={() => setShowCronModal(true)}
-            className="flex items-center gap-1 text-[11px] font-bold text-muted-foreground bg-muted/50 hover:bg-muted px-2.5 py-1.5 rounded-xl transition-all"
-            title="cron-job.org Setup"
+            className={`flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-xl border transition-all ${
+              workerLive
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70"
+                : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100/70"
+            }`}
+            title="Worker & Sync Status"
           >
-            <HelpCircle size={13} />
-            <span>Cron Setup</span>
+            <span className={`w-2 h-2 rounded-full ${workerLive ? "bg-emerald-500 animate-pulse" : "bg-amber-400"}`} />
+            <span>{workerLive ? "Daemon Live" : "Worker Idle"}</span>
           </button>
         </div>
 
@@ -404,44 +425,55 @@ export default function Home() {
         <CoinModal symbol={selectedSymbol} onClose={() => setSelectedSymbol(null)} />
       )}
 
-      {/* Cron Job Setup Modal */}
+      {/* Worker & Architecture Status Modal */}
       {showCronModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] z-50 flex items-center justify-center p-5">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl flex flex-col gap-4 animate-in fade-in zoom-in-95">
             <div className="flex justify-between items-center">
-              <h3 className="font-bold text-sm text-foreground">cron-job.org Setup</h3>
+              <div>
+                <h3 className="font-bold text-sm text-foreground">Sync & Worker Status</h3>
+                <p className="text-[10px] text-muted-foreground">Free Tier • Zero VPN Block Architecture</p>
+              </div>
               <button onClick={() => setShowCronModal(false)} className="p-1 hover:bg-muted rounded-full">
                 <X size={16} />
               </button>
             </div>
 
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Keep your scanner running automatically without exceeding free tier limits:
-            </p>
-
-            <div className="bg-muted/40 p-3 rounded-2xl border border-border/50 flex flex-col gap-2">
-              <span className="text-[10px] text-muted-foreground font-semibold uppercase">Your Cron URL</span>
-              <div className="flex items-center justify-between gap-2 bg-white px-3 py-2 rounded-xl border text-[11px] font-mono text-foreground">
-                <span className="truncate">
-                  {typeof window !== "undefined" ? `${window.location.origin}/api/cron` : "/api/cron"}
-                </span>
-                <button onClick={copyCronUrl} className="text-primary hover:text-primary-hover flex-shrink-0">
-                  {copiedCron ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
-                </button>
+            <div className={`p-3 rounded-2xl border flex items-center gap-3 ${
+              workerLive ? "bg-emerald-50/70 border-emerald-200" : "bg-amber-50/70 border-amber-200"
+            }`}>
+              <div className={`w-3 h-3 rounded-full flex-shrink-0 ${workerLive ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+              <div className="text-xs">
+                <div className="font-bold text-foreground">
+                  {workerLive ? "Local Daemon is Actively Pushing" : "Local Daemon is Idle / Offline"}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {lastScanTime ? `Last update: ${new Date(lastScanTime).toLocaleTimeString()}` : "No scan recorded yet"}
+                </div>
               </div>
             </div>
 
-            <div className="text-[11px] text-muted-foreground space-y-1.5">
-              <div>⏰ <strong>Recommended Interval:</strong> Every 5 or 10 minutes.</div>
-              <div>⚡ <strong>Free Tier Safe:</strong> Automatically prunes database to keep DB tiny.</div>
-              <div>🛡️ <strong>Method:</strong> GET or POST.</div>
+            <div className="bg-muted/40 p-3.5 rounded-2xl border border-border/50 flex flex-col gap-2">
+              <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">How to Run Local Worker</span>
+              <div className="bg-slate-900 text-slate-100 p-2.5 rounded-xl font-mono text-[11px] select-all">
+                npm run worker
+              </div>
+              <p className="text-[10px] text-muted-foreground leading-relaxed mt-0.5">
+                Or double-click <strong>run-worker.bat</strong> on your PC. It scans Binance using your home IP (zero VPN blocks) and auto-cleans Supabase so the database stays under 50 rows forever.
+              </p>
+            </div>
+
+            <div className="text-[11px] text-muted-foreground space-y-1.5 bg-gray-50 p-3 rounded-2xl">
+              <div>⚡ <strong>Vercel Site:</strong> Display only (under 30ms, 0 compute quota burned)</div>
+              <div>🧹 <strong>Supabase:</strong> Free tier safe (keeps only latest 2 runs)</div>
+              <div>🌐 <strong>Binance API:</strong> Residential IP (no 451/403 blocks)</div>
             </div>
 
             <button
               onClick={() => setShowCronModal(false)}
               className="w-full bg-foreground text-white font-bold py-2.5 rounded-xl text-xs mt-1"
             >
-              Done
+              Close
             </button>
           </div>
         </div>

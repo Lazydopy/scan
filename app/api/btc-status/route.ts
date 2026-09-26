@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { getKlines } from "@/lib/binance/api";
 import { analyzeMarketRegime } from "@/lib/market-structure/market-regime";
+import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dummy.supabase.co",
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "dummy"
+);
 
 async function getStats(symbol: string) {
   const [klines5m, klines15m, klines1h] = await Promise.all([
@@ -33,6 +39,28 @@ async function getStats(symbol: string) {
 
 export async function GET() {
   try {
+    // 1. Try Supabase fast-cache first
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_URL !== "https://dummy.supabase.co") {
+      const { data: latestRun } = await supabase
+        .from("scan_runs")
+        .select("status")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestRun?.status) {
+        try {
+          const parsed = JSON.parse(latestRun.status);
+          if (parsed.btcStatus) {
+            return NextResponse.json(parsed.btcStatus);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    // 2. Fallback to live Binance query
     const [btcData, ethData] = await Promise.all([
       getStats("BTCUSDT"),
       getStats("ETHUSDT")
